@@ -16,7 +16,7 @@ export function Settings() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    fetch('/api/settings', {
+    fetch((import.meta.env.VITE_API_URL || '') + '/api/settings', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -40,7 +40,7 @@ export function Settings() {
     setIsSaving(true);
     setMessage('');
     try {
-      const res = await fetch('/api/settings', {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/settings', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

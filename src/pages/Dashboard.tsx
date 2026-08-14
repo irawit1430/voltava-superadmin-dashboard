@@ -11,7 +11,7 @@ export function Dashboard() {
   const [logs, setLogs] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('/api/admin/stats', {
+    fetch((import.meta.env.VITE_API_URL || '') + '/api/admin/stats', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -19,7 +19,7 @@ export function Dashboard() {
       .then(res => res.ok ? res.json() : null)
       .then(data => setStats(data));
 
-    fetch('/api/schools', {
+    fetch((import.meta.env.VITE_API_URL || '') + '/api/schools', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -33,7 +33,7 @@ export function Dashboard() {
         }
       });
 
-    fetch('/api/admin/logs', {
+    fetch((import.meta.env.VITE_API_URL || '') + '/api/admin/logs', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -47,7 +47,7 @@ export function Dashboard() {
         }
       });
 
-    fetch('/api/devices/locations', {
+    fetch((import.meta.env.VITE_API_URL || '') + '/api/devices/locations', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -72,7 +72,7 @@ export function Dashboard() {
       });
 
     // Connect to WebSocket
-    const socket = io({
+    const socket = io(import.meta.env.VITE_API_URL || '', {
       auth: { token: localStorage.getItem('token') },
       transports: ['websocket']
     }); // Connects to the same origin by default

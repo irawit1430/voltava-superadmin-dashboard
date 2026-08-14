@@ -35,7 +35,7 @@ export function SchoolProfile() {
     setEditError(null);
     
     try {
-      const res = await fetch(`/api/schools/${id}`, {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/schools/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -58,7 +58,7 @@ export function SchoolProfile() {
   };
 
   useEffect(() => {
-    fetch('/api/schools', {
+    fetch((import.meta.env.VITE_API_URL || '') + '/api/schools', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -70,7 +70,7 @@ export function SchoolProfile() {
         setSchool(found);
       });
 
-    fetch('/api/devices', {
+    fetch((import.meta.env.VITE_API_URL || '') + '/api/devices', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -81,7 +81,7 @@ export function SchoolProfile() {
         setDevices(devicesList.filter((d: any) => d.schoolId === id));
       });
 
-    fetch(`/api/schools/${id}/stats`, {
+    fetch((import.meta.env.VITE_API_URL || '') + `/api/schools/${id}/stats`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }

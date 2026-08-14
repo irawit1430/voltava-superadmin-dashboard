@@ -16,7 +16,7 @@ export function Admins() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '', role: 'SUPER_ADMIN', schoolId: '' });
 
   useEffect(() => {
-    fetch('/api/admins', {
+    fetch((import.meta.env.VITE_API_URL || '') + '/api/admins', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -35,7 +35,7 @@ export function Admins() {
   const handleAddAdmin = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/admins', {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/admins', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -57,7 +57,7 @@ export function Admins() {
   const handleDeleteAdmin = async (id: string) => {
     if (!confirm('Are you sure you want to delete this admin?')) return;
     try {
-      const res = await fetch(`/api/admins/${id}`, {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/admins/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`

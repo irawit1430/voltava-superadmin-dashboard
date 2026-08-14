@@ -22,7 +22,7 @@ export function Schools() {
   const pendingSchools = schools.filter(s => s.status === 'Pending').length;
 
   useEffect(() => {
-    fetch(`/api/schools?page=${page}&limit=50&search=${encodeURIComponent(search)}`, {
+    fetch((import.meta.env.VITE_API_URL || '') + `/api/schools?page=${page}&limit=50&search=${encodeURIComponent(search)}`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -45,7 +45,7 @@ export function Schools() {
   const handleAddSchool = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/schools', {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/schools', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,7 +65,7 @@ export function Schools() {
 
         // Add Admin if provided
         if (formData.adminEmail && formData.adminPassword) {
-          await fetch('/api/admins', {
+          await fetch((import.meta.env.VITE_API_URL || '') + '/api/admins', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -83,7 +83,7 @@ export function Schools() {
         
         // Add Device if provided
         if (formData.deviceId) {
-          await fetch('/api/devices', {
+          await fetch((import.meta.env.VITE_API_URL || '') + '/api/devices', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -108,7 +108,7 @@ export function Schools() {
         setPage(1);
         setSearch('');
         // We can just fetch the first page again
-        const refreshRes = await fetch(`/api/schools?page=1&limit=50&search=`, {
+        const refreshRes = await fetch((import.meta.env.VITE_API_URL || '') + `/api/schools?page=1&limit=50&search=`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
         const refreshData = await refreshRes.json();
@@ -123,7 +123,7 @@ export function Schools() {
   const handleDeleteSchool = async (id: string) => {
     if (!confirm('Are you sure you want to delete this school?')) return;
     try {
-      const res = await fetch(`/api/schools/${id}`, {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/schools/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`

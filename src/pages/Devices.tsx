@@ -7,7 +7,8 @@ export function Devices() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ deviceId: '', serialNumber: '', licensePlate: '' });
+  const [schools, setSchools] = useState<any[]>([]);
+  const [formData, setFormData] = useState({ deviceId: '', serialNumber: '', licensePlate: '', schoolId: '' });
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('All Statuses');
@@ -46,7 +47,16 @@ export function Devices() {
   }, [devices, selectedStatus, searchQuery]);
 
   useEffect(() => {
-    fetch(`/api/devices?page=${page}&limit=50&search=${encodeURIComponent(searchQuery)}`, {
+    fetch((import.meta.env.VITE_API_URL || '') + '/api/schools?limit=1000', {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setSchools(data.data || data))
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    fetch((import.meta.env.VITE_API_URL || '') + `/api/devices?page=${page}&limit=50&search=${encodeURIComponent(searchQuery)}`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -73,7 +83,7 @@ export function Devices() {
   const handleAddDevice = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/devices', {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/devices', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -86,9 +96,9 @@ export function Devices() {
         if (newDevice.deviceSecret) {
           alert(`IMPORTANT: Save this device secret, it will only be shown once!\n\nDevice Secret: ${newDevice.deviceSecret}`);
         }
-        setDevices([newDevice, ...devices]);
+        setDevices([{...newDevice, school: schools.find(s => s.id === formData.schoolId)}, ...devices]);
         setIsModalOpen(false);
-        setFormData({ deviceId: '', serialNumber: '', licensePlate: '' });
+        setFormData({ deviceId: '', serialNumber: '', licensePlate: '', schoolId: '' });
       } else {
         const errorData = await res.json().catch(() => ({}));
         if (errorData.issues) {
@@ -106,7 +116,7 @@ export function Devices() {
   const handleDeleteDevice = async (id: string) => {
     if (!confirm('Are you sure you want to delete this device?')) return;
     try {
-      const res = await fetch(`/api/devices/${id}`, {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/devices/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -293,6 +303,13 @@ export function Devices() {
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">License Plate (Optional)</label>
                 <input type="text" value={formData.licensePlate} onChange={e => setFormData({...formData, licensePlate: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Assign School (Optional)</label>
+                <select value={formData.schoolId} onChange={e => setFormData({...formData, schoolId: e.target.value})} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  <option value="">Unassigned</option>
+                  {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
               </div>
               <div className="flex justify-end gap-3 mt-6">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors rounded-lg">Cancel</button>

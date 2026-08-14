@@ -32,7 +32,7 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   };
 
   const handleResolveNotification = (id: string) => {
-    fetch(`/api/notifications/${id}/resolve`, {
+    fetch((import.meta.env.VITE_API_URL || '') + `/api/notifications/${id}/resolve`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -47,7 +47,7 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
     if (unread.length === 0) return;
 
     const promises = unread.map(async (n) => {
-      const res = await fetch(`/api/notifications/${n.id}/resolve`, {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/notifications/${n.id}/resolve`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -83,7 +83,7 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
 
   useEffect(() => {
     // Fetch notifications
-    fetch('/api/notifications', {
+    fetch((import.meta.env.VITE_API_URL || '') + '/api/notifications', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
@@ -121,7 +121,7 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
     setIsSearching(true);
     
     const delayDebounceFn = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`, {
+      fetch((import.meta.env.VITE_API_URL || '') + `/api/search?q=${encodeURIComponent(searchQuery)}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
