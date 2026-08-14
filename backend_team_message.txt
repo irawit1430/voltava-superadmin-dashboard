@@ -1,0 +1,26 @@
+Hey Backend Team,
+
+I've integrated the frontend with the new updated API documentation you provided! The global dashboard stats (`/api/admin/stats`) are now fully dynamic and using the new fields like `schoolsGrowthPercent` and `busesGrowthPercent`. 
+
+However, there are a few missing pieces from the API that the frontend needs to be 100% complete. Here is what is missing/needs backend support:
+
+1. **Dashboard Schools Table (`/api/schools`)**: 
+   The frontend displays an "Active Buses" count for each school in the directory table, but `/api/schools` doesn't currently return this field. Can you please add an `activeBuses` or `totalBuses` count to the `School` object in this response?
+
+2. **School Dashboard Profile Stats (`/api/schools/:id/stats`)**:
+   When viewing a specific school's profile (e.g. `SchoolProfile.tsx`), the frontend tries to fetch a stats endpoint specifically for that school to display `totalBuses`, `totalRoutes`, and `totalStudents`. This endpoint doesn't exist in the current API documentation. Can we create `/api/schools/:id/stats`? (Alternatively, we can include these fields directly in the `/api/schools/:id` response).
+
+3. **Hardware Devices Table (`/api/devices`)**:
+   The Devices table needs to show whether a device is currently Online or Offline, and its last ping timestamp. The current `/api/devices` response provides the device details but is missing `status` and `lastPing` (or `lastUpdate`). Can we add these to the device object response so we don't have to cross-reference with the `/api/devices/locations` endpoint?
+
+4. **Map Logs (`/api/admin/logs`)**:
+   This endpoint works great! One minor thing: our UI shows a "Warning" count under the live map (based on SOS/offline alerts). Can we add a `warning` count to `/api/admin/stats`?
+
+**What's Real right now:**
+- Authentication (`/api/auth/login`)
+- Global Dashboard Stats (`/api/admin/stats`) 
+- Websockets & Map Locations (`/api/devices/locations` and `location_update`)
+- Tables for Schools, Devices, and Admins (`/api/schools`, `/api/devices`, `/api/admins`)
+- Advanced GPS Logs (`/api/admin/logs`)
+
+Let me know if you need any clarification or if you'd like me to mock these missing fields in the meantime!

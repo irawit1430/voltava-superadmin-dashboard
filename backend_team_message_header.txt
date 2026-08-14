@@ -1,0 +1,9 @@
+Hey Backend Team,
+
+Thanks for providing the new `/api/search` and `/api/notifications` endpoints! I'll integrate them into the Header right away.
+
+A couple of quick questions regarding the Header APIs:
+1. **Notifications Read State**: Is there (or could we add) an endpoint to mark a notification as "read" or "resolved" (e.g., `POST /api/notifications/:id/read`)? We'll need this to clear the unread badge and remove/dim the notification in the dropdown.
+2. **Search Limits**: Does the `/api/search` endpoint have a default limit on how many results it returns per category, or should we pass a `limit` parameter to prevent the dropdown from getting too large?
+
+Thanks!
