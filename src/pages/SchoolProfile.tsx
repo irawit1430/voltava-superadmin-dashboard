@@ -83,8 +83,8 @@ export function SchoolProfile() {
     e.preventDefault();
     if (!selectedDeviceId) return;
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/devices/${selectedDeviceId}/assign`, {
-        method: 'POST',
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/devices/${selectedDeviceId}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
