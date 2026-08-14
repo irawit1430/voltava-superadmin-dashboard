@@ -91,7 +91,7 @@ export function SchoolProfile() {
   }, [id]);
 
   const activeCount = devices.filter(d => d.status === 'ONLINE').length;
-  const offlineCount = devices.filter(d => d.status === 'OFFLINE').length;
+  const offlineCount = devices.filter(d => d.status !== 'ONLINE').length;
   const totalCount = devices.length;
   const operationalPercent = totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 0;
 
@@ -338,8 +338,8 @@ export function SchoolProfile() {
                     {new Date(device.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </td>
                   <td className="px-2 py-2 sm:px-4 sm:py-3 text-slate-600 font-medium">
-                    <span className={device.status === 'OFFLINE' ? 'text-rose-600 font-bold' : ''}>
-                      {device.lastPing}
+                    <span className={device.status !== 'ONLINE' ? 'text-rose-600 font-bold' : ''}>
+                      {device.lastPing || 'Never'}
                     </span>
                   </td>
                   <td className="px-2 py-2 sm:px-4 sm:py-3">
@@ -348,7 +348,7 @@ export function SchoolProfile() {
                       device.status === 'ONLINE' ? "bg-emerald-50 text-emerald-600" :
                       "bg-rose-50 text-rose-600"
                     )}>
-                      {device.status}
+                      {device.status || 'OFFLINE'}
                     </span>
                   </td>
                   <td className="px-2 py-2 sm:px-4 sm:py-3 text-right">

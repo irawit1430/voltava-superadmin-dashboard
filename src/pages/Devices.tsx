@@ -20,7 +20,7 @@ export function Devices() {
   const deviceStats = useMemo(() => {
     const totalCount = devices.length;
     const activeCount = devices.filter(d => d.status === 'ONLINE').length;
-    const totalErrorAlerts = devices.filter(d => d.status === 'OFFLINE').length;
+    const totalErrorAlerts = devices.filter(d => d.status !== 'ONLINE').length;
     const percentageActive = totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 0;
 
     return {
@@ -40,7 +40,7 @@ export function Devices() {
         (device.licensePlate && device.licensePlate.toLowerCase().includes(searchLower));
 
       const matchesStatus = selectedStatus === 'All Statuses' ||
-        device.status === selectedStatus.toUpperCase();
+        (device.status || 'OFFLINE') === selectedStatus.toUpperCase();
 
       return matchesSearch && matchesStatus;
     });
@@ -237,8 +237,8 @@ export function Devices() {
                       {device.licensePlate || '-'}
                     </td>
                     <td className="px-2 py-2 sm:px-4 sm:py-3 text-slate-600 font-medium">
-                      <span className={device.status === 'OFFLINE' ? 'text-rose-600 font-bold' : ''}>
-                        {device.lastPing}
+                      <span className={device.status !== 'ONLINE' ? 'text-rose-600 font-bold' : ''}>
+                        {device.lastPing || 'Never'}
                       </span>
                     </td>
                     <td className="px-2 py-2 sm:px-4 sm:py-3">
@@ -247,7 +247,7 @@ export function Devices() {
                         device.status === 'ONLINE' ? "bg-emerald-50 text-emerald-600" :
                         "bg-rose-50 text-rose-600"
                       )}>
-                        {device.status}
+                        {device.status || 'OFFLINE'}
                       </span>
                     </td>
                     <td className="px-2 py-2 sm:px-4 sm:py-3 text-right">
