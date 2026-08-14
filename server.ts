@@ -4,7 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import compression from 'compression';
 
-const TARGET_API = 'https://api.voltava.app';
+const TARGET_API = 'https://api.voltava.in'; // GCP Backend
 
 async function startServer() {
   const app = express();
