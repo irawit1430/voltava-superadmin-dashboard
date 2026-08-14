@@ -15,6 +15,9 @@ export function SchoolProfile() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState({ name: '', address: '', city: '', state: '', contactPerson: '' });
 
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [assignFormData, setAssignFormData] = useState({ deviceId: '', serialNumber: '', licensePlate: '' });
+
   const handleEditClick = () => {
     if (school) {
       setEditFormData({
@@ -54,6 +57,39 @@ export function SchoolProfile() {
     } catch (err) {
       console.error(err);
       setEditError('Network error occurred while updating profile.');
+    }
+  };
+
+  const handleAssignSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/devices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ ...assignFormData, schoolId: id })
+      });
+      if (res.ok) {
+        const newDevice = await res.json();
+        if (newDevice.deviceSecret) {
+          alert(`IMPORTANT: Save this device secret, it will only be shown once!\n\nDevice Secret: ${newDevice.deviceSecret}`);
+        }
+        setDevices([newDevice, ...devices]);
+        setIsAssignModalOpen(false);
+        setAssignFormData({ deviceId: '', serialNumber: '', licensePlate: '' });
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        if (errorData.issues) {
+          alert((errorData.error || 'Validation failed') + ':\n' + errorData.issues.map((i: any) => i.message).join('\n'));
+        } else {
+          alert(errorData.error || 'Failed to provision device');
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      alert('An unexpected error occurred');
     }
   };
 
@@ -308,9 +344,9 @@ export function SchoolProfile() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-slate-800">Hardware Devices</h3>
-          <button className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+          <button onClick={() => setIsAssignModalOpen(true)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
             <Plus className="w-4 h-4" />
-            Assign New Device
+            Provision New Device
           </button>
         </div>
         <div className="overflow-x-auto min-w-full flex-1">
@@ -406,6 +442,32 @@ export function SchoolProfile() {
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors rounded-lg">Cancel</button>
                 <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-lg">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isAssignModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-bold text-slate-800 mb-4">Provision Device for School</h2>
+            <form onSubmit={handleAssignSubmit} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Device ID</label>
+                <input required type="text" value={assignFormData.deviceId} onChange={e => setAssignFormData({...assignFormData, deviceId: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Serial Number (Optional)</label>
+                <input type="text" value={assignFormData.serialNumber} onChange={e => setAssignFormData({...assignFormData, serialNumber: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">License Plate (Optional)</label>
+                <input type="text" value={assignFormData.licensePlate} onChange={e => setAssignFormData({...assignFormData, licensePlate: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button type="button" onClick={() => setIsAssignModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors rounded-lg">Cancel</button>
+                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-lg">Provision</button>
               </div>
             </form>
           </div>
