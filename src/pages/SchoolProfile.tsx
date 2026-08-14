@@ -16,7 +16,8 @@ export function SchoolProfile() {
   const [editFormData, setEditFormData] = useState({ name: '', address: '', city: '', state: '', contactPerson: '' });
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [assignFormData, setAssignFormData] = useState({ deviceId: '', serialNumber: '', licensePlate: '' });
+  const [unassignedDevices, setUnassignedDevices] = useState<Device[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState('');
 
   const handleEditClick = () => {
     if (school) {
@@ -60,32 +61,44 @@ export function SchoolProfile() {
     }
   };
 
+  const handleAssignClick = async () => {
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/devices?limit=1000', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const devicesList = Array.isArray(data) ? data : data.data || [];
+        const available = devicesList.filter((d: any) => !d.schoolId);
+        setUnassignedDevices(available);
+        if (available.length > 0) setSelectedDeviceId(available[0].id);
+        setIsAssignModalOpen(true);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleAssignSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!selectedDeviceId) return;
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/devices', {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/devices/${selectedDeviceId}/assign`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ ...assignFormData, schoolId: id })
+        body: JSON.stringify({ schoolId: id })
       });
       if (res.ok) {
-        const newDevice = await res.json();
-        if (newDevice.deviceSecret) {
-          alert(`IMPORTANT: Save this device secret, it will only be shown once!\n\nDevice Secret: ${newDevice.deviceSecret}`);
-        }
-        setDevices([newDevice, ...devices]);
+        const assignedDevice = await res.json();
+        setDevices([assignedDevice, ...devices]);
         setIsAssignModalOpen(false);
-        setAssignFormData({ deviceId: '', serialNumber: '', licensePlate: '' });
+        setSelectedDeviceId('');
       } else {
         const errorData = await res.json().catch(() => ({}));
-        if (errorData.issues) {
-          alert((errorData.error || 'Validation failed') + ':\n' + errorData.issues.map((i: any) => i.message).join('\n'));
-        } else {
-          alert(errorData.error || 'Failed to provision device');
-        }
+        alert(errorData.error || 'Failed to assign device');
       }
     } catch (err) {
       console.error(err);
@@ -344,9 +357,9 @@ export function SchoolProfile() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-slate-800">Hardware Devices</h3>
-          <button onClick={() => setIsAssignModalOpen(true)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+          <button onClick={handleAssignClick} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
             <Plus className="w-4 h-4" />
-            Provision New Device
+            Assign Existing Device
           </button>
         </div>
         <div className="overflow-x-auto min-w-full flex-1">
@@ -451,23 +464,24 @@ export function SchoolProfile() {
       {isAssignModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
-            <h2 className="text-lg font-bold text-slate-800 mb-4">Provision Device for School</h2>
+            <h2 className="text-lg font-bold text-slate-800 mb-4">Assign Existing Device</h2>
             <form onSubmit={handleAssignSubmit} className="space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Device ID</label>
-                <input required type="text" value={assignFormData.deviceId} onChange={e => setAssignFormData({...assignFormData, deviceId: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Select Unassigned Device</label>
+                {unassignedDevices.length > 0 ? (
+                  <select required value={selectedDeviceId} onChange={e => setSelectedDeviceId(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    {unassignedDevices.map(d => (
+                      <option key={d.id} value={d.id}>{d.deviceId} {d.licensePlate ? `(${d.licensePlate})` : ''}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-100">No unassigned devices available. Please provision a new device from the Devices tab first.</p>
+                )}
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Serial Number (Optional)</label>
-                <input type="text" value={assignFormData.serialNumber} onChange={e => setAssignFormData({...assignFormData, serialNumber: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">License Plate (Optional)</label>
-                <input type="text" value={assignFormData.licensePlate} onChange={e => setAssignFormData({...assignFormData, licensePlate: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-              </div>
+              
               <div className="flex justify-end gap-3 mt-6">
                 <button type="button" onClick={() => setIsAssignModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors rounded-lg">Cancel</button>
-                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-lg">Provision</button>
+                <button type="submit" disabled={unassignedDevices.length === 0} className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">Assign Device</button>
               </div>
             </form>
           </div>
