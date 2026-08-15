@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TrendingUp, AlertTriangle, Building2, Bus, Users, Plus } from 'lucide-react';
 import { io } from 'socket.io-client';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import type { Stats, School } from '../types';
 
 export function Dashboard() {
@@ -238,36 +241,39 @@ export function Dashboard() {
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">Live Network Status</h3>
               <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded border border-emerald-500/30">ONLINE</span>
             </div>
-            <div className="w-full h-[300px] sm:h-[400px] bg-slate-800 rounded-lg relative overflow-hidden mb-4 border border-slate-700">
-               {/* Map Placeholder styled to look like dark mode radar */}
-               <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at center, #6366f1 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-               {Object.values(locations).map((loc: any) => (
-                 <div key={loc.busId}>
-                   <div 
-                      className="absolute w-8 h-8 bg-emerald-500 rounded-full border-2 border-emerald-300 shadow-[0_0_15px_rgba(99,102,241,0.5)] flex items-center justify-center z-10 transition-all duration-1000 ease-in-out"
-                      style={{
-                        top: `${50 + (loc.lat - 28.7041) * 10000}%`,
-                        left: `${50 + (loc.lng - 77.1025) * 10000}%`
-                      }}
-                   >
-                     <Bus className="w-4 h-4 text-white" />
-                   </div>
-                   <div 
-                      className="absolute z-20 bg-slate-900 border border-slate-700 text-[10px] text-white px-2 py-1 rounded transition-all duration-1000 ease-in-out whitespace-nowrap"
-                      style={{
-                        top: `calc(${50 + (loc.lat - 28.7041) * 10000}% - 30px)`,
-                        left: `calc(${50 + (loc.lng - 77.1025) * 10000}% - 20px)`
-                      }}
-                    >
-                      {loc.serialNumber || loc.busId} • {Math.round(loc.speed)} km/h
-                    </div>
-                 </div>
-               ))}
-               
-               {/* Static markers for context */}
-               <div className="absolute top-1/3 left-1/3 w-4 h-4 bg-emerald-500 rounded-full border border-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.5)] flex items-center justify-center z-10"></div>
-               <div className="absolute bottom-1/3 right-1/4 w-4 h-4 bg-amber-500 rounded-full border border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.5)] flex items-center justify-center z-10"></div>
-               <div className="absolute top-2/3 right-1/3 w-4 h-4 bg-rose-500 rounded-full border border-rose-300 shadow-[0_0_10px_rgba(225,29,72,0.5)] flex items-center justify-center z-10 animate-pulse"></div>
+            <div className="w-full h-[300px] sm:h-[400px] bg-slate-800 rounded-lg relative overflow-hidden mb-4 border border-slate-700 z-0">
+              <MapContainer 
+                center={[28.7041, 77.1025]} 
+                zoom={10} 
+                style={{ height: '100%', width: '100%', zIndex: 0 }}
+                scrollWheelZoom={true}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                />
+                {Object.values(locations).map((loc: any) => (
+                  <Marker 
+                    key={loc.busId} 
+                    position={[loc.lat, loc.lng]}
+                    icon={L.divIcon({
+                      html: `<div style="background-color: ${loc.speed > 0 ? '#10b981' : '#f59e0b'}; width: 28px; height: 28px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(0,0,0,0.5);">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bus"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/></svg>
+                             </div>`,
+                      className: '',
+                      iconSize: [28, 28],
+                      iconAnchor: [14, 14],
+                    })}
+                  >
+                    <Popup className="text-slate-800">
+                      <div className="font-bold border-b border-slate-100 pb-1 mb-1">{loc.serialNumber || loc.licensePlate || loc.busId}</div>
+                      <div className="text-xs">Speed: {Math.round(loc.speed)} km/h</div>
+                      {loc.schoolName && <div className="text-xs">School: {loc.schoolName}</div>}
+                      <div className="text-[10px] text-slate-400 mt-1">Last Update: {new Date(loc.timestamp).toLocaleTimeString()}</div>
+                    </Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-slate-800 p-2 rounded border border-slate-700 text-center">
