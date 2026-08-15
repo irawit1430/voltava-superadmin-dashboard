@@ -9,6 +9,9 @@ export function Dashboard() {
   const [schools, setSchools] = useState<School[]>([]);
   const [locations, setLocations] = useState<Record<string, {busId: string, lat: number, lng: number, speed: number, timestamp: string}>>({});
   const [logs, setLogs] = useState<any[]>([]);
+  const [schoolsPage, setSchoolsPage] = useState(1);
+  const itemsPerPage = 5;
+  const totalSchoolsPages = Math.ceil(schools.length / itemsPerPage) || 1;
 
   useEffect(() => {
     fetch((import.meta.env.VITE_API_URL || '') + '/api/admin/stats', {
@@ -180,7 +183,7 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody className="text-sm divide-y divide-slate-100">
-                {schools.slice(0, 5).map((school) => (
+                {schools.slice((schoolsPage - 1) * itemsPerPage, schoolsPage * itemsPerPage).map((school) => (
                   <tr key={school.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-2 py-2 sm:px-4 sm:py-3 font-mono text-emerald-600 font-medium text-xs">
                       <Link to={`/schools/${school.id}`} className="hover:underline">{school.id}</Link>
@@ -194,7 +197,7 @@ export function Dashboard() {
                     <td className="px-2 py-2 sm:px-4 sm:py-3 text-slate-600">{school.city}, {school.state}</td>
                     <td className="px-2 py-2 sm:px-4 sm:py-3 text-center">
                       <span className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold uppercase">
-                        {school.activeBuses} Active
+                        {school.activeBuses || 0} Active
                       </span>
                     </td>
                     <td className="px-2 py-2 sm:px-4 sm:py-3 text-right">
@@ -208,10 +211,22 @@ export function Dashboard() {
             </table>
           </div>
           <div className="p-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 bg-slate-50">
-            <span>Showing {Math.min(schools.length, 5)} of {schools.length} schools</span>
+            <span>Showing {Math.min(schools.length, schoolsPage * itemsPerPage)} of {schools.length} schools</span>
             <div className="flex items-center gap-1">
-              <button className="p-1 rounded hover:bg-slate-200 disabled:opacity-50">&lt;</button>
-              <button className="p-1 rounded hover:bg-slate-200 disabled:opacity-50">&gt;</button>
+              <button 
+                onClick={() => setSchoolsPage(p => Math.max(1, p - 1))}
+                disabled={schoolsPage === 1}
+                className="p-1 rounded hover:bg-slate-200 disabled:opacity-50"
+              >
+                &lt;
+              </button>
+              <button 
+                onClick={() => setSchoolsPage(p => Math.min(totalSchoolsPages, p + 1))}
+                disabled={schoolsPage === totalSchoolsPages}
+                className="p-1 rounded hover:bg-slate-200 disabled:opacity-50"
+              >
+                &gt;
+              </button>
             </div>
           </div>
         </div>
