@@ -4,7 +4,8 @@ import { createServer as createViteServer } from 'vite';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import compression from 'compression';
 
-const TARGET_API = 'https://api.voltava.in'; // GCP Backend
+// Shared with vite.config.ts via the same env var, so dev and prod can't drift.
+const TARGET_API = process.env.API_TARGET || 'https://api.voltava.in';
 
 async function startServer() {
   const app = express();

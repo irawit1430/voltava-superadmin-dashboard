@@ -1,148 +1,239 @@
-import { useEffect, useState, FormEvent } from 'react';
-import { Settings as SettingsIcon, Save } from 'lucide-react';
-
-interface GlobalSettings {
-  id: string;
-  maintenanceMode: boolean;
-  mapCenterLat: number;
-  mapCenterLng: number;
-  updatedAt: string;
-}
+import { useEffect, useState, type FormEvent } from 'react';
+import { Settings as SettingsIcon, Save, Gauge, Map as MapIcon, Wrench, Bell } from 'lucide-react';
+import { api, errorMessage } from '../lib/api';
+import { useSettings, DEFAULT_SETTINGS } from '../context/SettingsProvider';
+import type { GlobalSettings } from '../types';
+import {
+  Button,
+  Card,
+  CardHeader,
+  ConfirmDialog,
+  TextField,
+  Toggle,
+  ErrorBanner,
+  Skeleton,
+  useToast,
+} from '../components/ui';
 
 export function Settings() {
-  const [settings, setSettings] = useState<GlobalSettings | null>(null);
-  const [formData, setFormData] = useState({ maintenanceMode: false, mapCenterLat: 0, mapCenterLng: 0 });
-  const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState('');
+  const toast = useToast();
+  const { settings, loading, error, applyLocal, reload } = useSettings();
+
+  const [form, setForm] = useState<GlobalSettings>(settings);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [confirmMaintenance, setConfirmMaintenance] = useState(false);
 
   useEffect(() => {
-    fetch((import.meta.env.VITE_API_URL || '') + '/api/settings', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-      .then(res => res.ok ? res.json() : null)
-      .then((data) => {
-        setSettings(data);
-        if (data) {
-          setFormData({
-            maintenanceMode: !!data.maintenanceMode,
-            mapCenterLat: data.mapCenterLat,
-            mapCenterLng: data.mapCenterLng
-          });
-        }
-      })
-      .catch(err => console.error(err));
-  }, []);
+    if (!loading) setForm(settings);
+  }, [loading, settings]);
 
-  const handleSave = async (e: FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    setMessage('');
+  const persist = async (next: GlobalSettings) => {
+    setSaving(true);
+    setSaveError(null);
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/settings', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(formData)
-      });
-      if (res.ok) {
-        setMessage('Settings saved successfully.');
-        // update settings state
-        setSettings({ ...settings, ...formData, id: 'global', updatedAt: new Date().toISOString() } as GlobalSettings);
-      } else {
-        setMessage('Failed to save settings.');
-      }
+      await api.put('/api/settings', next);
+      applyLocal(next); // the app reacts immediately — map centre, banners, thresholds
+      toast.success('Settings saved');
     } catch (err) {
-      console.error(err);
-      setMessage('An error occurred while saving.');
+      setSaveError(errorMessage(err));
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (saving) return;
+    void persist(form);
+  };
+
+  const toggleMaintenance = (next: boolean) => {
+    if (next) {
+      // Turning this on cuts off every school admin and driver. It used to be a
+      // one-click switch that also did nothing — now it does something, so it
+      // asks first.
+      setConfirmMaintenance(true);
+    } else {
+      const updated = { ...form, maintenanceMode: false };
+      setForm(updated);
+      void persist(updated);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6">
+        <Skeleton className="h-16 w-full rounded-xl" />
+        <Skeleton className="h-64 w-full rounded-xl" />
+        <Skeleton className="h-64 w-full rounded-xl" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
-        <div className="w-10 h-10 bg-emerald-50 flex items-center justify-center rounded-lg">
-          <SettingsIcon className="w-5 h-5 text-emerald-600" />
+        <div className="w-10 h-10 bg-brand-50 flex items-center justify-center rounded-lg shrink-0">
+          <SettingsIcon className="w-5 h-5 text-brand-600" aria-hidden="true" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Global Settings</h1>
-          <p className="text-sm text-slate-500">Configure application-wide parameters</p>
+          <h1 className="text-xl font-bold text-slate-800">Global settings</h1>
+          <p className="text-sm text-slate-600">Applies to every school on the platform</p>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <form onSubmit={handleSave} className="space-y-6">
-          {message && (
-            <div className={`p-3 text-sm rounded-lg ${message.includes('successfully') ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-              {message}
-            </div>
-          )}
+      {error && (
+        <ErrorBanner
+          message={`${error} Showing defaults until this loads.`}
+          onRetry={reload}
+        />
+      )}
+      {saveError && <ErrorBanner message={saveError} />}
 
-          <div className="space-y-4">
-            <h2 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2">System Status</h2>
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Maintenance Mode</label>
-                <p className="text-xs text-slate-500">Disable access for non-admin users while performing updates.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={formData.maintenanceMode} 
-                  onChange={e => setFormData({...formData, maintenanceMode: e.target.checked})} 
-                  className="sr-only peer" 
-                />
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-              </label>
-            </div>
-          </div>
+      <Card>
+        <CardHeader title="System status" />
+        <div className="p-5">
+          <Toggle
+            label="Maintenance mode"
+            description="Blocks sign-in for school admins and drivers while you deploy. Super admins keep access."
+            checked={!!form.maintenanceMode}
+            onChange={toggleMaintenance}
+            tone="danger"
+          />
+        </div>
+      </Card>
 
-          <div className="space-y-4">
-            <h2 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2">Default Map Configuration</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Center Latitude</label>
-                <input 
-                  required 
-                  type="number" 
-                  step="any"
-                  value={formData.mapCenterLat} 
-                  onChange={e => setFormData({...formData, mapCenterLat: parseFloat(e.target.value) || 0})} 
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Center Longitude</label>
-                <input 
-                  required 
-                  type="number" 
-                  step="any"
-                  value={formData.mapCenterLng} 
-                  onChange={e => setFormData({...formData, mapCenterLng: parseFloat(e.target.value) || 0})} 
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
-                />
-              </div>
+      <form onSubmit={onSubmit} className="space-y-6">
+        <Card>
+          <CardHeader
+            title="Default map view"
+            subtitle="Where every map opens before it frames the live fleet"
+          />
+          <div className="p-5 space-y-4">
+            <div className="grid sm:grid-cols-3 gap-4">
+              <TextField
+                label="Centre latitude"
+                type="number"
+                step="any"
+                required
+                value={form.mapCenterLat ?? ''}
+                onChange={(e) =>
+                  setForm({ ...form, mapCenterLat: parseFloat(e.target.value) || 0 })
+                }
+              />
+              <TextField
+                label="Centre longitude"
+                type="number"
+                step="any"
+                required
+                value={form.mapCenterLng ?? ''}
+                onChange={(e) =>
+                  setForm({ ...form, mapCenterLng: parseFloat(e.target.value) || 0 })
+                }
+              />
+              <TextField
+                label="Default zoom"
+                type="number"
+                min={1}
+                max={18}
+                value={form.mapDefaultZoom ?? DEFAULT_SETTINGS.mapDefaultZoom}
+                onChange={(e) =>
+                  setForm({ ...form, mapDefaultZoom: parseInt(e.target.value, 10) || 10 })
+                }
+              />
             </div>
-            <p className="text-xs text-slate-500">These coordinates determine the initial viewport for all map interfaces.</p>
+            <p className="text-sm text-slate-600 flex gap-2 items-start">
+              <MapIcon className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" aria-hidden="true" />
+              The dashboard map zooms to fit reporting vehicles when there are any. These
+              coordinates are the fallback for an empty fleet.
+            </p>
           </div>
+        </Card>
 
-          <div className="pt-4 border-t border-slate-100 flex justify-end">
-            <button 
-              type="submit" 
-              disabled={isSaving}
-              className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-lg flex items-center gap-2 disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? 'Saving...' : 'Save Settings'}
-            </button>
+        <Card>
+          <CardHeader
+            title="Alert thresholds"
+            subtitle="What the console treats as a problem"
+          />
+          <div className="p-5 space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <TextField
+                label="Overspeed limit (km/h)"
+                type="number"
+                min={10}
+                max={150}
+                value={form.overspeedLimitKph ?? DEFAULT_SETTINGS.overspeedLimitKph}
+                onChange={(e) =>
+                  setForm({ ...form, overspeedLimitKph: parseInt(e.target.value, 10) || 0 })
+                }
+                hint="Above this, a vehicle is flagged as overspeeding."
+              />
+              <TextField
+                label="Offline alert after (minutes)"
+                type="number"
+                min={5}
+                max={720}
+                value={form.offlineAlertMinutes ?? DEFAULT_SETTINGS.offlineAlertMinutes}
+                onChange={(e) =>
+                  setForm({ ...form, offlineAlertMinutes: parseInt(e.target.value, 10) || 0 })
+                }
+                hint="A device silent for longer than this counts as offline."
+              />
+            </div>
+            <p className="text-sm text-slate-600 flex gap-2 items-start">
+              <Gauge className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" aria-hidden="true" />
+              These were previously hardcoded assumptions with no way to see or change them.
+              Confirm the backend reads them before relying on them for alerting.
+            </p>
           </div>
-        </form>
-      </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Alert delivery" />
+          <div className="p-5 space-y-4">
+            <TextField
+              label="Alert email"
+              type="email"
+              value={form.alertEmail ?? ''}
+              onChange={(e) => setForm({ ...form, alertEmail: e.target.value })}
+              placeholder="ops@voltava.in"
+              hint="Where SOS and offline alerts are sent when nobody is signed in."
+            />
+            <p className="text-sm text-slate-600 flex gap-2 items-start">
+              <Bell className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" aria-hidden="true" />
+              Alerts also appear in the bell menu, which refreshes live over the socket and falls
+              back to a one-minute poll.
+            </p>
+          </div>
+        </Card>
+
+        <div className="flex justify-end">
+          <Button type="submit" loading={saving} icon={<Save className="w-4 h-4" />}>
+            Save settings
+          </Button>
+        </div>
+      </form>
+
+      <ConfirmDialog
+        open={confirmMaintenance}
+        onClose={() => setConfirmMaintenance(false)}
+        title="Turn on maintenance mode?"
+        tone="danger"
+        confirmLabel="Turn on"
+        body={
+          <span className="flex gap-2 items-start">
+            <Wrench className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" aria-hidden="true" />
+            While this is on, school admins and drivers cannot sign in. Live tracking keeps
+            running, but nobody outside your team can see it.
+          </span>
+        }
+        onConfirm={async () => {
+          const updated = { ...form, maintenanceMode: true };
+          setForm(updated);
+          await persist(updated);
+        }}
+      />
     </div>
   );
 }

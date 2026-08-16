@@ -1,29 +1,62 @@
-import { Bell, Menu, Search, LogOut, Loader2, Building2, Cpu, Users, AlertTriangle } from 'lucide-react';
-import { useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import {
+  Bell,
+  Menu,
+  Search,
+  LogOut,
+  Loader2,
+  Building2,
+  Cpu,
+  Users,
+  AlertTriangle,
+  X,
+} from 'lucide-react';
+import { api, toPage, errorMessage } from '../lib/api';
+import { useDebounced } from '../lib/useApi';
+import { formatTime, humanise, relativeTime } from '../lib/format';
+import { useFleet } from '../context/FleetProvider';
+import { Avatar, Badge, Button, IconButton, useToast } from './ui';
+import type { AuthUser, School, Device, Admin } from '../types';
+import { cn } from '../lib/utils';
+
+interface SearchResults {
+  schools?: School[];
+  devices?: Device[];
+  admins?: Admin[];
+}
+
+function readUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch {
+    return null;
+  }
+}
 
 export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const navigate = useNavigate();
-  
+  const toast = useToast();
+  const { notifications, unresolvedCount, resolveNotification, resolveAll, connected } = useFleet();
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any>(null);
+  const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
-  
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  
+  const [resolvingAll, setResolvingAll] = useState(false);
+
   const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Parse user from localStorage safely
-  let user: any = null;
-  try {
-    const userStr = localStorage.getItem('user');
-    if (userStr) user = JSON.parse(userStr);
-  } catch (e) {
-    console.error("Failed to parse user", e);
-  }
+  const user = readUser();
+  const displayName = user?.name || 'Admin';
+  const displayRole = humanise(user?.role) || 'Super Admin';
+
+  const debouncedQuery = useDebounced(searchQuery, 300);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -31,302 +64,387 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
     navigate('/login');
   };
 
-  const handleResolveNotification = (id: string) => {
-    fetch((import.meta.env.VITE_API_URL || '') + `/api/notifications/${id}/resolve`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    }).then(() => {
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, status: 'RESOLVED' } : n));
-    }).catch(console.error);
-  };
+  /* ---------------- search ---------------- */
 
-  const handleResolveAll = async () => {
-    const unread = notifications.filter(n => n.status !== 'RESOLVED');
-    if (unread.length === 0) return;
-
-    const promises = unread.map(async (n) => {
-      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/notifications/${n.id}/resolve`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      if (!res.ok) throw new Error(`Failed to resolve ${n.id}`);
-      return n.id;
-    });
-
-    const results = await Promise.allSettled(promises);
-
-    const successfulIds = new Set(
-      results
-        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
-        .map(r => r.value)
-    );
-
-    const hasFailures = results.some(r => r.status === 'rejected');
-
-    setNotifications(prev =>
-      prev.map(n => successfulIds.has(n.id) ? { ...n, status: 'RESOLVED' } : n)
-    );
-
-    if (hasFailures) {
-      alert('Some notifications failed to resolve. Please try again.');
+  useEffect(() => {
+    const term = debouncedQuery.trim();
+    if (!term) {
+      setSearchResults(null);
+      setSearchError(null);
+      setIsSearching(false);
+      return;
     }
-  };
 
-  const displayName = user?.name || 'Admin';
-  const displayRole = user?.role ? user.role.replace('_', ' ') : 'Super Admin';
+    const controller = new AbortController();
+    setIsSearching(true);
+    setShowSearch(true);
 
-  const activeNotifs = notifications.filter(n => n.status !== 'RESOLVED');
-
-  useEffect(() => {
-    // Fetch notifications
-    fetch((import.meta.env.VITE_API_URL || '') + '/api/notifications', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-      .then(res => res.ok ? res.json() : [])
-      .then(data => {
-        if (Array.isArray(data)) {
-          setNotifications(data);
-        }
+    api
+      .get<SearchResults>(`/api/search?q=${encodeURIComponent(term)}`, controller.signal)
+      .then((data) => {
+        setSearchResults(data ?? {});
+        setSearchError(null);
       })
-      .catch(console.error);
-  }, []);
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setSearchResults(null);
+        setSearchError(errorMessage(err));
+      })
+      .finally(() => setIsSearching(false));
+
+    return () => controller.abort();
+  }, [debouncedQuery]);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const onPointerDown = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setShowSearchDropdown(false);
+        setShowSearch(false);
       }
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowSearch(false);
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, []);
 
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults(null);
-      setShowSearchDropdown(false);
-      return;
+  const closeSearch = () => {
+    setShowSearch(false);
+    setSearchQuery('');
+  };
+
+  const hasResults =
+    !!searchResults &&
+    ((searchResults.schools?.length ?? 0) > 0 ||
+      (searchResults.devices?.length ?? 0) > 0 ||
+      (searchResults.admins?.length ?? 0) > 0);
+
+  /* ---------------- notifications ---------------- */
+
+  const onResolve = async (id: string) => {
+    try {
+      await resolveNotification(id);
+    } catch (err) {
+      toast.error('Could not resolve that alert', errorMessage(err));
     }
+  };
 
-    setShowSearchDropdown(true);
-    setIsSearching(true);
-    
-    const delayDebounceFn = setTimeout(() => {
-      fetch((import.meta.env.VITE_API_URL || '') + `/api/search?q=${encodeURIComponent(searchQuery)}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      })
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          setSearchResults(data);
-        })
-        .catch(console.error)
-        .finally(() => setIsSearching(false));
-    }, 300);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  const onResolveAll = async () => {
+    setResolvingAll(true);
+    try {
+      const { resolved, failed } = await resolveAll();
+      if (failed > 0) {
+        toast.error(
+          `${failed} alert${failed === 1 ? '' : 's'} could not be resolved`,
+          `${resolved} went through. Try the rest again.`,
+        );
+      } else if (resolved > 0) {
+        toast.success(`Resolved ${resolved} alert${resolved === 1 ? '' : 's'}`);
+      }
+    } finally {
+      setResolvingAll(false);
+    }
+  };
 
   return (
-    <header className="h-auto sm:h-16 py-4 sm:py-0 bg-white border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 sm:px-8 lg:ml-64 shrink-0 relative z-40 gap-4 sm:gap-0">
-      <div className="flex items-center w-full max-w-xl gap-3">
-        <button onClick={onMenuClick} className="lg:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg">
-          <Menu className="w-5 h-5" />
-        </button>
-        <div className="flex items-center w-full max-w-xl" ref={searchRef}>
-        <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search schools, hardware, or admins..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => { if (searchQuery.trim()) setShowSearchDropdown(true); }}
-            className="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
-          />
-          {isSearching && (
-             <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500 animate-spin" />
-          )}
-          
-          {/* Search Dropdown */}
-          {showSearchDropdown && searchResults && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden max-h-96 overflow-y-auto">
-              {(!searchResults.schools?.length && !searchResults.devices?.length && !searchResults.admins?.length) ? (
-                <div className="p-4 text-sm text-slate-500 text-center">No results found for "{searchQuery}"</div>
-              ) : (
-                <div className="p-2 space-y-4">
-                  {searchResults.schools?.length > 0 && (
-                    <div>
-                      <div className="px-3 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">Schools</div>
-                      {searchResults.schools.map((school: any) => (
-                        <Link 
-                          key={school.id} 
-                          to={`/schools/${school.id}`}
-                          onClick={() => setShowSearchDropdown(false)}
-                          className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg transition-colors"
-                        >
-                           <div className="w-8 h-8 rounded bg-emerald-50 flex items-center justify-center flex-shrink-0">
-                             <Building2 className="w-4 h-4 text-emerald-600" />
-                           </div>
-                           <div>
-                             <p className="text-sm font-medium text-slate-800">{school.name}</p>
-                             <p className="text-xs text-slate-500">{school.city}, {school.state}</p>
-                           </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {searchResults.devices?.length > 0 && (
-                    <div>
-                      <div className="px-3 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">Devices</div>
-                      {searchResults.devices.map((device: any) => (
-                        <Link 
-                          key={device.id} 
-                          to={`/devices`}
-                          onClick={() => setShowSearchDropdown(false)}
-                          className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg transition-colors"
-                        >
-                           <div className="w-8 h-8 rounded bg-blue-50 flex items-center justify-center flex-shrink-0">
-                             <Cpu className="w-4 h-4 text-blue-600" />
-                           </div>
-                           <div>
-                             <p className="text-sm font-medium text-slate-800">{device.licensePlate}</p>
-                             <p className="text-xs text-slate-500">{device.deviceId}</p>
-                           </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {searchResults.admins?.length > 0 && (
-                    <div>
-                      <div className="px-3 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">Admins</div>
-                      {searchResults.admins.map((admin: any) => (
-                        <Link 
-                          key={admin.id} 
-                          to={`/admins`}
-                          onClick={() => setShowSearchDropdown(false)}
-                          className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg transition-colors"
-                        >
-                           <div className="w-8 h-8 rounded bg-purple-50 flex items-center justify-center flex-shrink-0">
-                             <Users className="w-4 h-4 text-purple-600" />
-                           </div>
-                           <div>
-                             <p className="text-sm font-medium text-slate-800">{admin.name}</p>
-                             <p className="text-xs text-slate-500">{admin.role}</p>
-                           </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-      </div>
-      
-      <div className="flex items-center justify-end w-full sm:w-auto gap-4 sm:gap-6">
-        <div className="relative" ref={notifRef}>
-          <button 
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="relative text-slate-500 hover:bg-slate-100 p-2 rounded-full transition-colors"
+    <header className="bg-white border-b border-slate-200 lg:ml-64 shrink-0 relative z-40">
+      <div className="h-auto sm:h-16 py-3 sm:py-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between px-4 sm:px-8 gap-3 sm:gap-6">
+        <div className="flex items-center gap-3 w-full sm:max-w-xl">
+          <button
+            onClick={onMenuClick}
+            className="lg:hidden p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg shrink-0"
+            aria-label="Open navigation"
           >
-            <Bell className="w-5 h-5" />
-            {activeNotifs.length > 0 && (
-              <span className="absolute top-1.5 right-2 w-2 h-2 bg-rose-500 rounded-full border border-white"></span>
-            )}
+            <Menu className="w-5 h-5" />
           </button>
-          
-          {/* Notifications Dropdown */}
-          {showNotifications && (
-            <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-bold text-slate-800">Notifications</h3>
-                {activeNotifs.length > 0 && (
-                  <span className="text-xs font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{activeNotifs.length} New</span>
-                )}
-              </div>
-              <div className="max-h-96 overflow-y-auto">
-                {notifications.length === 0 ? (
-                  <div className="p-8 text-center text-sm text-slate-500">
-                    No new notifications.
+
+          <div className="relative w-full" ref={searchRef}>
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"
+              aria-hidden="true"
+            />
+            <input
+              ref={inputRef}
+              type="search"
+              role="combobox"
+              aria-expanded={showSearch && (hasResults || !!searchError)}
+              aria-controls="global-search-results"
+              placeholder="Search schools, hardware, or admins…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => {
+                if (searchQuery.trim()) setShowSearch(true);
+              }}
+              className="w-full h-10 pl-10 pr-10 bg-slate-100 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"
+            />
+            {isSearching ? (
+              <Loader2
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-600 animate-spin"
+                aria-hidden="true"
+              />
+            ) : searchQuery ? (
+              <button
+                onClick={closeSearch}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 rounded"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
+
+            {showSearch && (searchResults || searchError) && (
+              <div
+                id="global-search-results"
+                role="listbox"
+                className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden max-h-96 overflow-y-auto"
+              >
+                {searchError ? (
+                  <div className="p-4 text-sm text-danger-700 bg-danger-50">{searchError}</div>
+                ) : !hasResults ? (
+                  <div className="p-4 text-sm text-slate-600 text-center">
+                    Nothing matches “{searchQuery}”.
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-100">
-                    {notifications.map((notif) => (
-                      <div key={notif.id} className={`p-4 hover:bg-slate-50 transition-colors flex gap-3 ${notif.status === 'RESOLVED' ? 'opacity-50' : ''}`}>
-                        <div className={`mt-0.5 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${notif.type === 'DRIVER_SOS' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>
-                          <AlertTriangle className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-bold text-slate-800">{notif.title}</p>
-                          <p className="text-xs text-slate-600 mt-0.5">{notif.message}</p>
-                          <div className="flex items-center justify-between mt-2">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                              {new Date(notif.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            </p>
-                            {notif.status !== 'RESOLVED' && (
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleResolveNotification(notif.id);
-                                }}
-                                className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 uppercase tracking-wider px-2 py-0.5 bg-emerald-50 rounded"
-                              >
-                                Resolve
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="p-2 space-y-3">
+                    {!!searchResults?.schools?.length && (
+                      <ResultGroup title="Schools">
+                        {searchResults.schools.map((school) => (
+                          <ResultRow
+                            key={school.id}
+                            to={`/schools/${school.id}`}
+                            onNavigate={closeSearch}
+                            icon={<Building2 className="w-4 h-4 text-brand-600" />}
+                            iconClass="bg-brand-50"
+                            title={school.name}
+                            subtitle={[school.city, school.state].filter(Boolean).join(', ')}
+                          />
+                        ))}
+                      </ResultGroup>
+                    )}
+
+                    {!!searchResults?.devices?.length && (
+                      <ResultGroup title="Devices">
+                        {searchResults.devices.map((device) => (
+                          <ResultRow
+                            key={device.id}
+                            // Deep-linked: every device result used to point at
+                            // the unfiltered /devices list, throwing away the
+                            // match the search had just found.
+                            to={`/devices?q=${encodeURIComponent(device.deviceId ?? device.id)}`}
+                            onNavigate={closeSearch}
+                            icon={<Cpu className="w-4 h-4 text-brand-600" />}
+                            iconClass="bg-brand-50"
+                            title={device.deviceId ?? device.serialNumber ?? device.id}
+                            subtitle={
+                              device.licensePlate
+                                ? `${device.licensePlate}${device.school?.name ? ` · ${device.school.name}` : ''}`
+                                : (device.school?.name ?? 'Unassigned')
+                            }
+                          />
+                        ))}
+                      </ResultGroup>
+                    )}
+
+                    {!!searchResults?.admins?.length && (
+                      <ResultGroup title="Admins">
+                        {searchResults.admins.map((admin) => (
+                          <ResultRow
+                            key={admin.id}
+                            to={`/admins?q=${encodeURIComponent(admin.email ?? admin.name ?? '')}`}
+                            onNavigate={closeSearch}
+                            icon={<Users className="w-4 h-4 text-brand-600" />}
+                            iconClass="bg-brand-50"
+                            title={admin.name}
+                            subtitle={`${humanise(admin.role)} · ${admin.email}`}
+                          />
+                        ))}
+                      </ResultGroup>
+                    )}
                   </div>
                 )}
               </div>
-              {activeNotifs.length > 0 && (
-                <div className="p-3 border-t border-slate-100 text-center">
-                  <button 
-                    onClick={handleResolveAll}
-                    className="text-xs font-bold text-emerald-600 hover:text-emerald-700 uppercase tracking-wider"
-                  >
-                    Mark All as Read
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
-        
-        <div className="flex items-center gap-3 border-l border-slate-200 pl-6">
-          <div className="text-right">
-            <p className="text-sm font-semibold text-slate-800 leading-tight">{displayName}</p>
-            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mt-0.5">{displayRole}</p>
+
+        <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 shrink-0">
+          <div className="relative" ref={notifRef}>
+            <button
+              onClick={() => setShowNotifications((s) => !s)}
+              aria-label={
+                unresolvedCount > 0
+                  ? `Alerts, ${unresolvedCount} unresolved`
+                  : 'Alerts, none unresolved'
+              }
+              aria-expanded={showNotifications}
+              className="relative text-slate-600 hover:bg-slate-100 w-10 h-10 flex items-center justify-center rounded-full transition-colors"
+            >
+              <Bell className="w-5 h-5" />
+              {unresolvedCount > 0 && (
+                <span className="absolute top-0.5 right-0.5 min-w-4 h-4 px-1 bg-danger-600 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center tabular-nums">
+                  {unresolvedCount > 9 ? '9+' : unresolvedCount}
+                </span>
+              )}
+            </button>
+
+            {showNotifications && (
+              <div className="absolute top-full right-0 mt-2 w-[min(20rem,calc(100vw-2rem))] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-2">
+                  <h3 className="font-bold text-slate-800">Alerts</h3>
+                  {unresolvedCount > 0 && (
+                    <Badge tone="danger">{unresolvedCount} open</Badge>
+                  )}
+                </div>
+
+                {!connected && (
+                  <p className="px-4 py-2 text-xs text-warn-700 bg-warn-50 border-b border-warn-100">
+                    Live connection is down — this list refreshes every minute instead.
+                  </p>
+                )}
+
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="p-8 text-center text-sm text-slate-600">
+                      No alerts right now.
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-slate-100">
+                      {notifications.map((notif) => {
+                        const resolved = (notif.status || '').toUpperCase() === 'RESOLVED';
+                        const critical = (notif.type || '').toUpperCase().includes('SOS');
+                        return (
+                          <li
+                            key={notif.id}
+                            className={cn(
+                              'p-4 hover:bg-slate-50 transition-colors flex gap-3',
+                              resolved && 'opacity-55',
+                            )}
+                          >
+                            <div
+                              className={cn(
+                                'mt-0.5 shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
+                                critical
+                                  ? 'bg-danger-50 text-danger-600'
+                                  : 'bg-warn-50 text-warn-600',
+                              )}
+                            >
+                              <AlertTriangle className="w-4 h-4" aria-hidden="true" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-slate-800">{notif.title}</p>
+                              {notif.message && (
+                                <p className="text-sm text-slate-600 mt-0.5">{notif.message}</p>
+                              )}
+                              <div className="flex items-center justify-between gap-2 mt-2">
+                                <p className="text-xs text-slate-500">
+                                  {relativeTime(notif.createdAt)} · {formatTime(notif.createdAt)}
+                                </p>
+                                {!resolved && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs text-brand-700 hover:bg-brand-50"
+                                    onClick={() => onResolve(notif.id)}
+                                  >
+                                    Resolve
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+
+                {unresolvedCount > 0 && (
+                  <div className="p-3 border-t border-slate-100 flex justify-center">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      loading={resolvingAll}
+                      onClick={onResolveAll}
+                      className="text-brand-700 hover:bg-brand-50"
+                    >
+                      Resolve all
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold overflow-hidden">
-            <img src={`https://ui-avatars.com/api/?name=${displayName.replace(' ', '+')}&background=d1fae5&color=059669`} alt="Admin" className="w-full h-full object-cover" />
+
+          <div className="flex items-center gap-3 sm:border-l sm:border-slate-200 sm:pl-4">
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-semibold text-slate-800 leading-tight">{displayName}</p>
+              <p className="text-[11px] text-slate-500 uppercase font-bold tracking-widest mt-0.5">
+                {displayRole}
+              </p>
+            </div>
+            <Avatar name={displayName} />
+            <IconButton label="Sign out" tone="danger" onClick={handleLogout}>
+              <LogOut className="w-4 h-4" />
+            </IconButton>
           </div>
-          <button 
-            onClick={handleLogout}
-            className="ml-2 text-slate-400 hover:text-rose-600 transition-colors p-2 rounded-lg hover:bg-rose-50"
-            title="Log out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
         </div>
       </div>
     </header>
+  );
+}
+
+function ResultGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="px-3 mb-1 label">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function ResultRow({
+  to,
+  onNavigate,
+  icon,
+  iconClass,
+  title,
+  subtitle,
+}: {
+  to: string;
+  onNavigate: () => void;
+  icon: React.ReactNode;
+  iconClass: string;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+}) {
+  return (
+    <Link
+      to={to}
+      onClick={onNavigate}
+      role="option"
+      aria-selected={false}
+      className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 rounded-lg transition-colors"
+    >
+      <div
+        className={cn('w-8 h-8 rounded flex items-center justify-center shrink-0', iconClass)}
+        aria-hidden="true"
+      >
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-slate-800 truncate">{title}</p>
+        {subtitle && <p className="text-xs text-slate-500 truncate">{subtitle}</p>}
+      </div>
+    </Link>
   );
 }

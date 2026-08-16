@@ -1,324 +1,591 @@
-import { useEffect, useState, FormEvent, useMemo } from 'react';
-import { Cpu, Search, Filter, MoreVertical, Plus } from 'lucide-react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Cpu, Search, X, Plus, Trash2, Copy, Check, ShieldAlert } from 'lucide-react';
+import { api, toPage, query, errorMessage } from '../lib/api';
+import { useApi, useDebounced } from '../lib/useApi';
+import { relativeTime, freshness, normaliseStatus, isOnline, STALE_MINUTES } from '../lib/format';
+import type { Device, School } from '../types';
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  DeviceStatusBadge,
+  IconButton,
+  KpiCard,
+  Modal,
+  Pagination,
+  SelectField,
+  TextField,
+  DataTable,
+  Th,
+  Td,
+  CellInline,
+  CardList,
+  CardRow,
+  TableSkeleton,
+  EmptyState,
+  ErrorState,
+  ErrorBanner,
+  useToast,
+} from '../components/ui';
 import { cn } from '../lib/utils';
-import type { Device } from '../types';
+
+const PAGE_SIZE = 25;
+const STATUSES = ['All statuses', 'Online', 'Offline'];
 
 export function Devices() {
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [schools, setSchools] = useState<any[]>([]);
-  const [formData, setFormData] = useState({ deviceId: '', serialNumber: '', licensePlate: '', schoolId: '' });
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('All Statuses');
+  const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Deep links from global search land here with ?q=, so the match the search
+  // found is still applied when the page opens.
+  const [searchInput, setSearchInput] = useState(searchParams.get('q') ?? '');
+  const search = useDebounced(searchInput, 300);
+  const [status, setStatus] = useState(() => {
+    const fromUrl = searchParams.get('status');
+    return STATUSES.find((s) => s.toLowerCase() === (fromUrl ?? '').toLowerCase()) ?? STATUSES[0];
+  });
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+  const [staleFirst, setStaleFirst] = useState(false);
 
+  const [isAddOpen, setAddOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Device | null>(null);
+  const [secret, setSecret] = useState<{ deviceId: string; value: string } | null>(null);
 
-  const deviceStats = useMemo(() => {
-    const totalCount = devices.length;
-    const activeCount = devices.filter(d => d.status === 'ONLINE').length;
-    const totalErrorAlerts = devices.filter(d => d.status !== 'ONLINE').length;
-    const percentageActive = totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 0;
+  const statusParam = status === STATUSES[0] ? undefined : status.toUpperCase();
 
-    return {
-      totalCount,
-      activeCount,
-      totalErrorAlerts,
-      percentageActive
-    };
-  }, [devices]);
+  const devices = useApi(
+    (signal) =>
+      api
+        .get<unknown>(
+          `/api/devices${query({ page, limit: PAGE_SIZE, search, status: statusParam })}`,
+          signal,
+        )
+        .then((data) => toPage<Device>(data)),
+    [page, search, statusParam],
+  );
 
-  const filteredDevices = useMemo(() => {
-    return devices.filter(device => {
-      const searchLower = searchQuery.toLowerCase();
-      const matchesSearch = !searchQuery ||
-        (device.deviceId && device.deviceId.toLowerCase().includes(searchLower)) ||
-        (device.serialNumber && device.serialNumber.toLowerCase().includes(searchLower)) ||
-        (device.licensePlate && device.licensePlate.toLowerCase().includes(searchLower));
+  const schools = useApi(
+    (signal) =>
+      api
+        .get<unknown>(`/api/schools${query({ limit: 500 })}`, signal)
+        .then((data) => toPage<School>(data)),
+    [],
+  );
 
-      const matchesStatus = selectedStatus === 'All Statuses' ||
-        (device.status || 'OFFLINE') === selectedStatus.toUpperCase();
+  const items = devices.data?.items ?? [];
+  const total = devices.data?.total ?? 0;
 
-      return matchesSearch && matchesStatus;
+  const statusFilterIgnored = useMemo(() => {
+    if (!statusParam || items.length === 0) return false;
+    return items.some((d) => normaliseStatus(d.status || 'OFFLINE') !== statusParam);
+  }, [items, statusParam]);
+
+  /**
+   * "Which devices went dark?" is the most common question on this screen and
+   * there was no way to ask it — `lastPing` rendered as a raw ISO string with no
+   * ordering and no threshold.
+   */
+  const rows = useMemo(() => {
+    if (!staleFirst) return items;
+    return [...items].sort((a, b) => {
+      const at = a.lastPing ? new Date(a.lastPing).getTime() : 0;
+      const bt = b.lastPing ? new Date(b.lastPing).getTime() : 0;
+      return at - bt;
     });
-  }, [devices, selectedStatus, searchQuery]);
+  }, [items, staleFirst]);
+
+  const onPage = items.length;
+  const onlineOnPage = items.filter((d) => isOnline(d.status)).length;
+  const staleOnPage = items.filter((d) => freshness(d.lastPing) !== 'live').length;
 
   useEffect(() => {
-    fetch((import.meta.env.VITE_API_URL || '') + '/api/schools?limit=1000', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    })
-      .then(res => res.ok ? res.json() : [])
-      .then(data => setSchools(data.data || data))
-      .catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    fetch((import.meta.env.VITE_API_URL || '') + `/api/devices?page=${page}&limit=50&search=${encodeURIComponent(searchQuery)}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-      .then(res => res.ok ? res.json() : [])
-      .then(data => {
-        if (Array.isArray(data)) {
-          setDevices(data);
-          setTotalPages(1);
-          setTotalCount(data.length);
-        } else if (data.data) {
-          setDevices(data.data);
-          setTotalPages(Math.ceil(data.total / 50) || 1);
-          setTotalCount(data.total);
-        }
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error("Error fetching devices", err);
-        setLoading(false);
-      });
-  }, [searchQuery, page]);
-
-  const handleAddDevice = async (e: FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/devices', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(formData)
-      });
-      if (res.ok) {
-        const newDevice = await res.json();
-        if (newDevice.deviceSecret) {
-          alert(`IMPORTANT: Save this device secret, it will only be shown once!\n\nDevice Secret: ${newDevice.deviceSecret}`);
-        }
-        setDevices([{...newDevice, school: schools.find(s => s.id === formData.schoolId)}, ...devices]);
-        setIsModalOpen(false);
-        setFormData({ deviceId: '', serialNumber: '', licensePlate: '', schoolId: '' });
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        if (errorData.issues) {
-          alert((errorData.error || 'Validation failed') + ':\n' + errorData.issues.map((i: any) => i.message).join('\n'));
-        } else {
-          alert(errorData.error || 'Failed to provision device');
-        }
-      }
-    } catch (err) {
-      console.error(err);
-      alert('An unexpected error occurred');
+    // Keep the URL in step so the view is shareable and survives a reload.
+    // Only write when something actually differs — `setSearchParams` changes the
+    // location, which re-runs this effect, so an unconditional call can loop.
+    const next = new URLSearchParams();
+    if (searchInput) next.set('q', searchInput);
+    if (status !== STATUSES[0]) next.set('status', status);
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
     }
+  }, [searchInput, status, searchParams, setSearchParams]);
+
+  const resetFilters = () => {
+    setSearchInput('');
+    setStatus(STATUSES[0]);
+    setStaleFirst(false);
+    setPage(1);
   };
 
-  const handleDeleteDevice = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this device?')) return;
-    try {
-      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/devices/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+  const filtersActive = !!searchInput || status !== STATUSES[0] || staleFirst;
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-xl font-bold text-slate-800">Hardware devices</h1>
+          {!devices.loading && <Badge tone="brand">{total.toLocaleString()} total</Badge>}
+        </div>
+        <Button onClick={() => setAddOpen(true)} icon={<Plus className="w-4 h-4" />}>
+          Provision device
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <KpiCard
+          label="Devices registered"
+          value={total}
+          loading={devices.loading}
+          icon={<Cpu className="w-3.5 h-3.5" />}
+          basis="Across the whole fleet"
+        />
+        <KpiCard
+          label="Online"
+          value={onlineOnPage}
+          loading={devices.loading}
+          tone="ok"
+          /* The header used to read "{total} TOTAL / {n}% ACTIVE / {n} ERRORS"
+             where the total came from the server and the other two were counted
+             off the current 50 rows. Same row, two populations, no indication. */
+          basis={`Within the ${onPage} shown`}
+        />
+        <KpiCard
+          label={`Silent over ${STALE_MINUTES} min`}
+          value={staleOnPage}
+          loading={devices.loading}
+          tone={staleOnPage > 0 ? 'danger' : 'neutral'}
+          icon={<ShieldAlert className="w-3.5 h-3.5" />}
+          basis={`Within the ${onPage} shown`}
+        />
+      </div>
+
+      <Card>
+        <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-end gap-3 flex-wrap">
+          <SelectField
+            label="Status"
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
+            wrapperClassName="w-full sm:w-44"
+          >
+            {STATUSES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </SelectField>
+
+          <div className="flex flex-col gap-1.5 flex-1 sm:max-w-xs">
+            <label htmlFor="device-search" className="label">
+              Search
+            </label>
+            <div className="relative">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"
+                aria-hidden="true"
+              />
+              <input
+                id="device-search"
+                type="search"
+                placeholder="Device ID, serial, or plate…"
+                value={searchInput}
+                onChange={(e) => {
+                  setSearchInput(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full h-10 pl-9 pr-3 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+          </div>
+
+          <Button
+            variant={staleFirst ? 'primary' : 'secondary'}
+            onClick={() => setStaleFirst((v) => !v)}
+            aria-pressed={staleFirst}
+          >
+            Quietest first
+          </Button>
+
+          {filtersActive && (
+            <Button variant="ghost" onClick={resetFilters} icon={<X className="w-4 h-4" />}>
+              Clear
+            </Button>
+          )}
+        </div>
+
+        {statusFilterIgnored && (
+          <div className="p-3 border-b border-slate-100">
+            <ErrorBanner message="The server returned devices outside the selected status, so status filtering isn't supported by the API yet. These results are unfiltered." />
+          </div>
+        )}
+
+        {devices.error ? (
+          <ErrorState message={devices.error} onRetry={devices.reload} />
+        ) : (
+          <>
+            <DataTable>
+              <thead className="border-b border-slate-200">
+                <tr>
+                  <Th>Device ID</Th>
+                  <Th>Serial number</Th>
+                  <Th>Assigned school</Th>
+                  <Th>Bus plate</Th>
+                  <Th>Last ping</Th>
+                  <Th>Status</Th>
+                  <Th align="right">Actions</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {devices.loading ? (
+                  <TableSkeleton rows={8} cols={7} />
+                ) : (
+                  rows.map((device) => (
+                    <tr key={device.id} className="hover:bg-slate-50 transition-colors">
+                      <Td>
+                        <CellInline
+                          icon={<Cpu className="w-4 h-4 text-brand-500 shrink-0" aria-hidden="true" />}
+                        >
+                          <span className="font-mono text-xs font-medium text-brand-700">
+                            {device.deviceId}
+                          </span>
+                        </CellInline>
+                      </Td>
+                      {/* This column used to render `licensePlate || serialNumber`,
+                          duplicating the plate column and hiding the one
+                          identifier you can read off the physical unit. */}
+                      <Td className="font-mono text-xs text-slate-600">
+                        {device.serialNumber || '—'}
+                      </Td>
+                      <Td className="text-slate-800 font-medium">
+                        {device.school?.name ?? (device.schoolId ? '—' : 'Unassigned')}
+                      </Td>
+                      <Td className="text-slate-600">{device.licensePlate || '—'}</Td>
+                      <Td>
+                        <LastPing value={device.lastPing} />
+                      </Td>
+                      <Td>
+                        <DeviceStatusBadge status={device.status} />
+                      </Td>
+                      <Td align="right">
+                        <IconButton
+                          label={`Delete ${device.deviceId}`}
+                          tone="danger"
+                          onClick={() => setDeleteTarget(device)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </IconButton>
+                      </Td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </DataTable>
+
+            <CardList>
+              {rows.map((device) => (
+                <CardRow
+                  key={device.id}
+                  title={<span className="font-mono text-sm">{device.deviceId}</span>}
+                  subtitle={device.school?.name ?? 'Unassigned'}
+                  badge={<DeviceStatusBadge status={device.status} />}
+                  rows={[
+                    { label: 'Serial', value: device.serialNumber || '—' },
+                    { label: 'Plate', value: device.licensePlate || '—' },
+                    { label: 'Last ping', value: <LastPing value={device.lastPing} /> },
+                  ]}
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="dangerGhost"
+                      onClick={() => setDeleteTarget(device)}
+                      icon={<Trash2 className="w-3.5 h-3.5" />}
+                    >
+                      Delete
+                    </Button>
+                  }
+                />
+              ))}
+            </CardList>
+
+            {/* This check used to read `devices.length === 0` while the table
+                rendered a filtered array, so a filter that matched nothing gave
+                you a header with an empty body and no message at all. */}
+            {!devices.loading && rows.length === 0 && (
+              <EmptyState
+                icon={<Cpu className="w-5 h-5" />}
+                title={filtersActive ? 'No devices match these filters' : 'No devices yet'}
+                body={
+                  filtersActive
+                    ? 'Nothing here fits the current search and status.'
+                    : 'Provision your first tracker to start receiving positions.'
+                }
+                action={
+                  filtersActive ? (
+                    <Button variant="secondary" size="sm" onClick={resetFilters}>
+                      Clear filters
+                    </Button>
+                  ) : (
+                    <Button size="sm" onClick={() => setAddOpen(true)}>
+                      Provision device
+                    </Button>
+                  )
+                }
+              />
+            )}
+
+            <Pagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={total}
+              onPageChange={setPage}
+              noun="devices"
+            />
+          </>
+        )}
+      </Card>
+
+      <ProvisionModal
+        open={isAddOpen}
+        onClose={() => setAddOpen(false)}
+        schools={schools.data?.items ?? []}
+        onProvisioned={(device) => {
+          toast.success('Device provisioned', `${device.deviceId} is registered.`);
+          if (device.deviceSecret) {
+            setSecret({ deviceId: device.deviceId, value: device.deviceSecret });
+          }
+          devices.reload();
+        }}
+      />
+
+      <DeviceSecretModal secret={secret} onClose={() => setSecret(null)} />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title={`Delete ${deleteTarget?.deviceId ?? 'device'}?`}
+        body="The tracker stops reporting to the platform. Its historical data may be removed too."
+        consequences={
+          deleteTarget?.school?.name
+            ? [`Assignment to ${deleteTarget.school.name}`, 'Live tracking for the attached bus']
+            : ['Live tracking for the attached bus']
         }
+        confirmLabel="Delete device"
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          await api.del(`/api/devices/${deleteTarget.id}`);
+          toast.success(`${deleteTarget.deviceId} deleted`);
+          devices.reload();
+        }}
+      />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function LastPing({ value }: { value?: string | null }) {
+  const state = freshness(value);
+  const tone = {
+    live: 'text-slate-700',
+    stale: 'text-warn-700 font-semibold',
+    critical: 'text-danger-700 font-semibold',
+    never: 'text-slate-500',
+  }[state];
+
+  return (
+    <span className={cn('text-sm whitespace-nowrap', tone)} title={value ?? 'Never reported'}>
+      {relativeTime(value)}
+    </span>
+  );
+}
+
+function ProvisionModal({
+  open,
+  onClose,
+  schools,
+  onProvisioned,
+}: {
+  open: boolean;
+  onClose: () => void;
+  schools: School[];
+  onProvisioned: (device: Device) => void;
+}) {
+  const [form, setForm] = useState({
+    deviceId: '',
+    serialNumber: '',
+    licensePlate: '',
+    schoolId: '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const close = () => {
+    setForm({ deviceId: '', serialNumber: '', licensePlate: '', schoolId: '' });
+    setError(null);
+    onClose();
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const device = await api.post<Device>('/api/devices', {
+        deviceId: form.deviceId,
+        serialNumber: form.serialNumber || undefined,
+        licensePlate: form.licensePlate || undefined,
+        schoolId: form.schoolId || undefined,
       });
-      if (res.ok) {
-        setDevices(devices.filter(d => d.id !== id));
-      }
+      onProvisioned(device);
+      close();
     } catch (err) {
-      console.error(err);
+      setError(errorMessage(err));
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-slate-800">Hardware Devices</h1>
-          <div className="flex gap-2">
-            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full border border-emerald-200">
-              {deviceStats.totalCount} TOTAL
-            </span>
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full border border-blue-200">
-              {deviceStats.percentageActive}% ACTIVE
-            </span>
-            <span className="px-2 py-0.5 bg-rose-100 text-rose-700 text-xs font-bold rounded-full border border-rose-200">
-              {deviceStats.totalErrorAlerts} ERRORS
-            </span>
-          </div>
-        </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+    <Modal
+      open={open}
+      onClose={close}
+      title="Provision a device"
+      description="Register a tracker so it can report positions."
+      footer={
+        <>
+          <Button variant="secondary" onClick={close} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button type="submit" form="provision-form" loading={submitting}>
+            Provision
+          </Button>
+        </>
+      }
+    >
+      <form id="provision-form" onSubmit={submit} className="space-y-4">
+        {error && <ErrorBanner message={error} />}
+        <TextField
+          label="Device ID"
+          required
+          value={form.deviceId}
+          onChange={(e) => setForm({ ...form, deviceId: e.target.value })}
+          placeholder="TM100-XXX"
+        />
+        <TextField
+          label="Serial number"
+          value={form.serialNumber}
+          onChange={(e) => setForm({ ...form, serialNumber: e.target.value })}
+          hint="Printed on the unit. Needed for RMAs and field swaps."
+        />
+        <TextField
+          label="License plate"
+          value={form.licensePlate}
+          onChange={(e) => setForm({ ...form, licensePlate: e.target.value })}
+          placeholder="DL1P-1234"
+        />
+        <SelectField
+          label="Assign to school"
+          value={form.schoolId}
+          onChange={(e) => setForm({ ...form, schoolId: e.target.value })}
+          hint="Can be assigned later from the school's profile."
         >
-          <Plus className="w-4 h-4" />
-          Provision Device
-        </button>
+          <option value="">Unassigned</option>
+          {schools.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </SelectField>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * The device secret is shown exactly once and can never be retrieved again. It
+ * previously arrived in a native `alert()` — no copy button, no confirmation
+ * that it was saved, and one stray Enter key lost the credential permanently.
+ */
+function DeviceSecretModal({
+  secret,
+  onClose,
+}: {
+  secret: { deviceId: string; value: string } | null;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
+
+  useEffect(() => {
+    if (secret) {
+      setCopied(false);
+      setAcknowledged(false);
+    }
+  }, [secret]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(secret?.value ?? '');
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={!!secret}
+      onClose={() => acknowledged && onClose()}
+      title="Save this device secret now"
+      description="This is the only time it will be shown. It cannot be recovered later."
+      size="md"
+      footer={
+        <Button onClick={onClose} disabled={!acknowledged}>
+          Done
+        </Button>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex gap-3 p-3 rounded-lg bg-warn-50 border border-warn-100">
+          <ShieldAlert className="w-4 h-4 text-warn-600 shrink-0 mt-0.5" aria-hidden="true" />
+          <p className="text-sm text-warn-700">
+            Store it in your password manager or the hardware provisioning sheet before closing
+            this dialog. If you lose it, the device has to be re-provisioned.
+          </p>
+        </div>
+
+        <div>
+          <p className="label mb-1.5">Device {secret?.deviceId}</p>
+          <div className="flex gap-2">
+            <code className="flex-1 px-3 py-2.5 bg-slate-900 text-brand-300 rounded-lg text-sm font-mono break-all select-all">
+              {secret?.value}
+            </code>
+            <Button
+              variant="secondary"
+              onClick={copy}
+              icon={copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+          </div>
+        </div>
+
+        <label className="flex items-start gap-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={acknowledged}
+            onChange={(e) => setAcknowledged(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+          />
+          <span className="text-sm text-slate-700">
+            I have saved this secret somewhere safe.
+          </span>
+        </label>
       </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-slate-100 flex items-center gap-4 bg-slate-50">
-          <div className="flex flex-col gap-1 w-48">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</label>
-            <select
-              value={selectedStatus}
-              onChange={e => { setSelectedStatus(e.target.value); setPage(1); }}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option>All Statuses</option>
-              <option>Online</option>
-              <option>Offline</option>
-            </select>
-          </div>
-          <div className="flex flex-col gap-1 flex-1 max-w-xs">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Search</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Search by Device ID or Serial..." 
-                value={searchQuery}
-                onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
-                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
-              />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1 mt-auto">
-            <button 
-              onClick={() => { setSearchQuery(''); setPage(1); }}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 transition-colors"
-            >
-              <Filter className="w-4 h-4" />
-              Clear Filters
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto min-w-full flex-1">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Device ID</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Serial Number</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Assigned School</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bus License</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Last Ping</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
-                    Loading devices...
-                  </td>
-                </tr>
-              ) : devices.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
-                    No devices found.
-                  </td>
-                </tr>
-              ) : (
-                filteredDevices.map((device) => (
-                  <tr key={device.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-2 py-2 sm:px-4 sm:py-3 font-mono text-emerald-600 font-medium text-xs flex items-center gap-2 truncate max-w-[150px]">
-                      <Cpu className="w-4 h-4 text-emerald-400" />
-                      {device.deviceId}
-                    </td>
-                    <td className="px-2 py-2 sm:px-4 sm:py-3 font-mono text-slate-600 text-xs truncate max-w-[150px]">
-                      {device.licensePlate || device.serialNumber}
-                    </td>
-                    <td className="px-2 py-2 sm:px-4 sm:py-3 text-slate-800 font-medium truncate max-w-[150px]">
-                      {device.school?.name || 'Unassigned'}
-                    </td>
-                    <td className="px-2 py-2 sm:px-4 sm:py-3 text-slate-600">
-                      {device.licensePlate || '-'}
-                    </td>
-                    <td className="px-2 py-2 sm:px-4 sm:py-3 text-slate-600 font-medium">
-                      <span className={device.status !== 'ONLINE' ? 'text-rose-600 font-bold' : ''}>
-                        {device.lastPing || 'Never'}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 sm:px-4 sm:py-3">
-                      <span className={cn(
-                        "px-2 py-1 rounded text-[10px] font-bold uppercase",
-                        device.status === 'ONLINE' ? "bg-emerald-50 text-emerald-600" :
-                        "bg-rose-50 text-rose-600"
-                      )}>
-                        {device.status || 'OFFLINE'}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 sm:px-4 sm:py-3 text-right">
-                      <button 
-                        onClick={() => handleDeleteDevice(device.id)}
-                        className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors"
-                        title="Delete Device"
-                      >
-                        <span className="text-xs font-bold">Delete</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="p-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 bg-slate-50">
-          <span>Showing page {page} of {totalPages}</span>
-          <div className="flex items-center gap-1">
-            <button 
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-100 disabled:opacity-50"
-            >
-              &lt;
-            </button>
-            <button className="w-7 h-7 flex items-center justify-center rounded bg-emerald-600 text-white font-medium">{page}</button>
-            <button 
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-100 disabled:opacity-50"
-            >
-              &gt;
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
-            <h2 className="text-lg font-bold text-slate-800 mb-4">Provision Device</h2>
-            <form onSubmit={handleAddDevice} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Device ID</label>
-                <input required type="text" value={formData.deviceId} onChange={e => setFormData({...formData, deviceId: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Serial Number (Optional)</label>
-                <input type="text" value={formData.serialNumber} onChange={e => setFormData({...formData, serialNumber: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">License Plate (Optional)</label>
-                <input type="text" value={formData.licensePlate} onChange={e => setFormData({...formData, licensePlate: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Assign School (Optional)</label>
-                <select value={formData.schoolId} onChange={e => setFormData({...formData, schoolId: e.target.value})} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                  <option value="">Unassigned</option>
-                  {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-              <div className="flex justify-end gap-3 mt-6">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors rounded-lg">Cancel</button>
-                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-lg">Provision</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+    </Modal>
   );
 }

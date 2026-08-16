@@ -1,51 +1,13 @@
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Global fetch interceptor for auth
-const originalFetch = window.fetch;
-window.fetch = async (...args) => {
-  let [resource, config] = args;
-
-  let url = '';
-  if (typeof resource === 'string') {
-    url = resource;
-  } else if (resource instanceof URL) {
-    url = resource.toString();
-  } else if (resource instanceof Request) {
-    url = resource.url;
-  }
-
-  if (url.startsWith('/api') || url.includes('/api/')) {
-    const token = localStorage.getItem('token');
-    if (token) {
-      if (resource instanceof Request) {
-        resource.headers.set('Authorization', `Bearer ${token}`);
-      } else {
-        config = config || {};
-        config.headers = {
-          ...config.headers,
-          Authorization: `Bearer ${token}`
-        };
-      }
-    }
-  }
-
-  try {
-    const response = await originalFetch(resource, config);
-
-    if (response.status === 401 && window.location.pathname !== '/login') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
-
-    return response;
-  } catch (error) {
-    throw error;
-  }
-};
+// The global `window.fetch` monkeypatch that used to live here has been removed.
+// Auth headers, 401 handling and error normalisation now live in src/lib/api.ts,
+// which every call site goes through. Patching the global was invisible from the
+// call sites, double-applied the Authorization header (each page set it by hand
+// too), and could not be tested.
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
