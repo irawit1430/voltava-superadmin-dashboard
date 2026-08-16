@@ -35,6 +35,11 @@ export function Modal({
   const titleId = useId();
   const descId = useId();
 
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
 
@@ -49,13 +54,17 @@ export function Modal({
       );
 
     // Land focus on the first real control so the form is immediately typeable.
-    const first = focusable()[0];
-    (first ?? panelRef.current)?.focus();
+    // Prefer input/textarea/select over buttons (like the close button).
+    const firstInput = panelRef.current?.querySelector<HTMLElement>(
+      'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])'
+    );
+    const firstFocusable = focusable()[0];
+    (firstInput ?? firstFocusable ?? panelRef.current)?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -85,7 +94,7 @@ export function Modal({
       document.body.style.overflow = previousOverflow;
       restoreFocusTo.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
