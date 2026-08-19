@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, Loader2, AlertTriangle } from 'lucide-react';
+import { Lock, Mail, Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { request, ApiError, AUTH_MESSAGE_KEY, errorMessage } from '../lib/api';
 import type { AuthUser } from '../types';
 
@@ -15,6 +15,7 @@ export function Login() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   // Message handed over by the API client when it signed the user out.
@@ -93,7 +94,7 @@ export function Login() {
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Voltava</h1>
           <p className="text-[11px] font-bold text-brand-500 uppercase tracking-widest mt-2">
-            Energy Systems
+            Fleet Intelligence
           </p>
         </div>
 
@@ -142,12 +143,23 @@ export function Login() {
           </div>
 
           <div>
-            <label
-              htmlFor="password"
-              className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5"
-            >
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="password"
+                className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider"
+              >
+                Password
+              </label>
+              <button
+                type="button"
+                className="text-[11px] font-semibold text-brand-400 hover:text-brand-300 transition-colors"
+                onClick={() => {
+                  setNotice('Contact your system administrator to reset your password.');
+                }}
+              >
+                Forgot password?
+              </button>
+            </div>
             <div className="relative">
               <Lock
                 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"
@@ -155,13 +167,25 @@ export function Login() {
               />
               <input
                 id="password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-9 pr-3 py-3 bg-slate-950 border border-slate-800 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all font-medium text-white placeholder-slate-600"
+                className="w-full pl-9 pr-10 py-3 bg-slate-950 border border-slate-800 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all font-medium text-white placeholder-slate-600"
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
             </div>
           </div>
 

@@ -100,9 +100,9 @@ export function Sidebar({
               onClick={() => setIsOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors relative',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-150 relative nav-link-hover',
                   isActive
-                    ? 'bg-slate-800 text-white before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-0.5 before:rounded-r before:bg-brand-500'
+                    ? 'bg-slate-800 text-white before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-0.5 before:rounded-r before:bg-brand-500 shadow-sm'
                     : 'text-slate-400 hover:bg-slate-800 hover:text-white',
                 )
               }

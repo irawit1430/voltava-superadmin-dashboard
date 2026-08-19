@@ -1,11 +1,18 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { IconButton } from './Button';
+import { cn } from '../../lib/utils';
 
-/**
- * Shows an honest range. The dashboard footer previously read "Showing 5 of 23"
- * then "Showing 10 of 23" on page two — a running total where the user needs to
- * know which slice they're looking at.
- */
+function pageRange(current: number, total: number): (number | '...')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | '...')[] = [1];
+  const left = Math.max(2, current - 1);
+  const right = Math.min(total - 1, current + 1);
+  if (left > 2) pages.push('...');
+  for (let i = left; i <= right; i++) pages.push(i);
+  if (right < total - 1) pages.push('...');
+  if (total > 1) pages.push(total);
+  return pages;
+}
+
 export function Pagination({
   page,
   pageSize,
@@ -30,29 +37,52 @@ export function Pagination({
           <>No {noun}</>
         ) : (
           <>
-            Showing <b className="font-semibold text-slate-800">{from}–{to}</b> of{' '}
+            Showing <b className="font-semibold text-slate-800">{from}&ndash;{to}</b> of{' '}
             <b className="font-semibold text-slate-800">{total.toLocaleString()}</b> {noun}
           </>
         )}
       </span>
-      <div className="flex items-center gap-1">
-        <IconButton
-          label="Previous page"
+      <div className="flex items-center gap-0.5">
+        <button
+          aria-label="Previous page"
           onClick={() => onPageChange(Math.max(1, page - 1))}
           disabled={page <= 1}
+          className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
-        </IconButton>
-        <span className="px-3 text-sm font-medium text-slate-700 tabular-nums">
-          {page} / {totalPages}
-        </span>
-        <IconButton
-          label="Next page"
+        </button>
+
+        {totalPages > 1 &&
+          pageRange(page, totalPages).map((p, i) =>
+            p === '...' ? (
+              <span key={`e${i}`} className="w-8 h-8 flex items-center justify-center text-xs text-slate-400 select-none">
+                &hellip;
+              </span>
+            ) : (
+              <button
+                key={p}
+                onClick={() => onPageChange(p)}
+                aria-current={p === page ? 'page' : undefined}
+                className={cn(
+                  'w-8 h-8 rounded-lg text-sm font-medium transition-all duration-150',
+                  p === page
+                    ? 'bg-brand-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100',
+                )}
+              >
+                {p}
+              </button>
+            ),
+          )}
+
+        <button
+          aria-label="Next page"
           onClick={() => onPageChange(Math.min(totalPages, page + 1))}
           disabled={page >= totalPages}
+          className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <ChevronRight className="w-4 h-4" />
-        </IconButton>
+        </button>
       </div>
     </div>
   );

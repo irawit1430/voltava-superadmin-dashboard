@@ -77,7 +77,7 @@ export function KpiCard({
   const valueTone = tone === 'danger' ? 'text-danger-700' : 'text-slate-800';
 
   return (
-    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm transition-shadow duration-200 hover:shadow-md">
       <div className="flex justify-between items-start gap-3 mb-1.5">
         <p className="label">{label}</p>
         {icon && (

@@ -11,6 +11,8 @@ import {
   Users,
   AlertTriangle,
   X,
+  ChevronDown,
+  User,
 } from 'lucide-react';
 import { api, toPage, errorMessage } from '../lib/api';
 import { useDebounced } from '../lib/useApi';
@@ -46,10 +48,12 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const [isSearching, setIsSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [resolvingAll, setResolvingAll] = useState(false);
 
   const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const user = readUser();
@@ -103,11 +107,19 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
       }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false);
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setShowSearch(false);
         setShowNotifications(false);
+        setShowUserMenu(false);
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        inputRef.current?.focus();
       }
     };
     document.addEventListener('mousedown', onPointerDown);
@@ -200,7 +212,11 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
               >
                 <X className="w-3.5 h-3.5" />
               </button>
-            ) : null}
+            ) : (
+              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 bg-white text-[10px] font-medium text-slate-400 pointer-events-none select-none">
+                <span className="text-[9px]">&#8984;</span>K
+              </kbd>
+            )}
 
             {showSearch && (searchResults || searchError) && (
               <div
@@ -385,17 +401,48 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
             )}
           </div>
 
-          <div className="flex items-center gap-3 sm:border-l sm:border-slate-200 sm:pl-4">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold text-slate-800 leading-tight">{displayName}</p>
-              <p className="text-[11px] text-slate-500 uppercase font-bold tracking-widest mt-0.5">
-                {displayRole}
-              </p>
-            </div>
-            <Avatar name={displayName} />
-            <IconButton label="Sign out" tone="danger" onClick={handleLogout}>
-              <LogOut className="w-4 h-4" />
-            </IconButton>
+          <div className="relative sm:border-l sm:border-slate-200 sm:pl-4" ref={userMenuRef}>
+            <button
+              onClick={() => setShowUserMenu((s) => !s)}
+              aria-expanded={showUserMenu}
+              aria-label="Account menu"
+              className="flex items-center gap-2.5 hover:bg-slate-50 rounded-lg px-2 py-1.5 transition-colors"
+            >
+              <Avatar name={displayName} />
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-semibold text-slate-800 leading-tight">{displayName}</p>
+                <p className="text-[11px] text-slate-500 uppercase font-bold tracking-widest mt-0.5">
+                  {displayRole}
+                </p>
+              </div>
+              <ChevronDown className={cn('w-3.5 h-3.5 text-slate-400 hidden sm:block transition-transform', showUserMenu && 'rotate-180')} />
+            </button>
+
+            {showUserMenu && (
+              <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden modal-enter">
+                <div className="p-3 border-b border-slate-100 sm:hidden">
+                  <p className="text-sm font-semibold text-slate-800">{displayName}</p>
+                  <p className="text-xs text-slate-500">{displayRole}</p>
+                </div>
+                <div className="p-1.5">
+                  <Link
+                    to="/settings"
+                    onClick={() => setShowUserMenu(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <User className="w-4 h-4 text-slate-400" />
+                    Settings
+                  </Link>
+                  <button
+                    onClick={() => { setShowUserMenu(false); handleLogout(); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-danger-600 hover:bg-danger-50 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign out
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

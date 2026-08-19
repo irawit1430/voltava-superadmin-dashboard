@@ -32,7 +32,9 @@ const Settings = React.lazy(() =>
 function Screen({ children, label }: { children: React.ReactNode; label: string }) {
   return (
     <ErrorBoundary label={label}>
-      <Suspense fallback={<LoadingSpinner />}>{children}</Suspense>
+      <Suspense fallback={<LoadingSpinner />}>
+        <div className="page-enter">{children}</div>
+      </Suspense>
     </ErrorBoundary>
   );
 }

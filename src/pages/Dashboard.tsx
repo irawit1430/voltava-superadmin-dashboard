@@ -44,6 +44,24 @@ import { cn } from '../lib/utils';
 
 const RECENT_SCHOOLS = 5;
 
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function readUserName(): string {
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) return '';
+    const user = JSON.parse(raw);
+    return user?.name?.split(' ')[0] ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export function Dashboard() {
   const { connected, lastEventAt, locations, locationsError } = useFleet();
   const { settings } = useSettings();
@@ -75,7 +93,12 @@ export function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-xl font-bold text-slate-800">System overview</h1>
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">
+            {greeting()}{readUserName() ? `, ${readUserName()}` : ''}
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">Here's your fleet at a glance.</p>
+        </div>
         <LiveIndicator connected={connected} lastEventAt={lastEventAt} />
       </div>
 
