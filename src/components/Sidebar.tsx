@@ -1,5 +1,14 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Map as MapIcon, GraduationCap, Cpu, Users, Settings, X } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Map as MapIcon,
+  Bell,
+  GraduationCap,
+  Cpu,
+  Users,
+  Settings,
+  X,
+} from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFleet } from '../context/FleetProvider';
 import { relativeTime } from '../lib/format';
@@ -7,6 +16,7 @@ import { relativeTime } from '../lib/format';
 const LINKS = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, end: true },
   { name: 'Live Map', href: '/map', icon: MapIcon, end: false },
+  { name: 'Alerts', href: '/alerts', icon: Bell, end: false },
   { name: 'Schools', href: '/schools', icon: GraduationCap, end: false },
   { name: 'Hardware Devices', href: '/devices', icon: Cpu, end: false },
   { name: 'Admins', href: '/admins', icon: Users, end: false },
@@ -58,6 +68,13 @@ export function Sidebar({
   isOpen: boolean;
   setIsOpen: (val: boolean) => void;
 }) {
+  const { notifications, unresolvedCount } = useFleet();
+  const hasCriticalAlert = notifications.some(
+    (n) =>
+      (n.status || '').toUpperCase() !== 'RESOLVED' &&
+      (n.type || '').toUpperCase().includes('SOS'),
+  );
+
   return (
     <aside
       className={cn(
@@ -114,6 +131,16 @@ export function Sidebar({
                     aria-hidden="true"
                   />
                   {link.name}
+                  {link.href === '/alerts' && unresolvedCount > 0 && (
+                    <span
+                      className={cn(
+                        'ml-auto min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center tabular-nums text-white',
+                        hasCriticalAlert ? 'bg-critical-600 pulse-critical' : 'bg-danger-600',
+                      )}
+                    >
+                      {unresolvedCount > 99 ? '99+' : unresolvedCount}
+                    </span>
+                  )}
                 </>
               )}
             </NavLink>

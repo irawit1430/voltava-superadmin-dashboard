@@ -411,8 +411,15 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
                   )}
                 </div>
 
-                {unresolvedCount > 0 && (
-                  <div className="p-3 border-t border-slate-100 flex justify-center">
+                <div className="p-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <Link
+                    to="/alerts"
+                    onClick={() => setShowNotifications(false)}
+                    className="text-sm font-semibold text-slate-700 hover:bg-slate-100 rounded-lg px-3 py-1.5 transition-colors"
+                  >
+                    View all alerts
+                  </Link>
+                  {unresolvedCount > 0 && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -422,8 +429,8 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
                     >
                       Resolve all
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
           </div>

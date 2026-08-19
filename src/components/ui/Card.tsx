@@ -61,7 +61,7 @@ export function KpiCard({
   label: string;
   value: ReactNode;
   icon?: ReactNode;
-  tone?: 'brand' | 'ok' | 'warn' | 'danger' | 'neutral';
+  tone?: 'brand' | 'ok' | 'warn' | 'danger' | 'critical' | 'neutral';
   hint?: ReactNode;
   loading?: boolean;
   basis?: string;
@@ -71,10 +71,12 @@ export function KpiCard({
     ok: 'bg-ok-50 text-ok-600',
     warn: 'bg-warn-50 text-warn-600',
     danger: 'bg-danger-50 text-danger-600',
+    critical: 'bg-critical-50 text-critical-600',
     neutral: 'bg-slate-100 text-slate-500',
   }[tone];
 
-  const valueTone = tone === 'danger' ? 'text-danger-700' : 'text-slate-800';
+  const valueTone =
+    tone === 'critical' ? 'text-critical-700' : tone === 'danger' ? 'text-danger-700' : 'text-slate-800';
 
   return (
     <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm transition-shadow duration-200 hover:shadow-md">
