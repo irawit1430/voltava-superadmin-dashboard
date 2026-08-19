@@ -2,17 +2,23 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dangerGhost';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dangerGhost' | 'critical';
 type Size = 'sm' | 'md';
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700 border border-transparent',
+  // Primary actions are slate, not brand-green. A saturated green button reads
+  // as an "online / go" status — the same green the fleet uses for a moving
+  // bus. Making actions neutral-dark frees green to mean exactly one thing:
+  // healthy. The emerald stays the identity colour (logo, links, focus ring).
+  primary: 'bg-slate-900 text-white hover:bg-slate-800 border border-transparent',
   secondary:
     'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300',
   ghost: 'bg-transparent text-slate-600 border border-transparent hover:bg-slate-100',
   danger: 'bg-danger-600 text-white hover:bg-danger-700 border border-transparent',
   dangerGhost:
     'bg-transparent text-danger-600 border border-transparent hover:bg-danger-50',
+  // Reserved for life-safety (SOS) actions — a truer, louder red than danger.
+  critical: 'bg-critical-600 text-white hover:bg-critical-700 border border-transparent',
 };
 
 const SIZES: Record<Size, string> = {

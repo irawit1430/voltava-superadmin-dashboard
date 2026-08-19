@@ -10,6 +10,7 @@ import {
   Cpu,
   Users,
   AlertTriangle,
+  Siren,
   X,
   ChevronDown,
   User,
@@ -59,6 +60,14 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const user = readUser();
   const displayName = user?.name || 'Admin';
   const displayRole = humanise(user?.role) || 'Super Admin';
+
+  // A live SOS is a different order of urgency from an offline device. When one
+  // is open and unresolved, the bell itself escalates — colour and a slow pulse.
+  const hasCriticalAlert = notifications.some(
+    (n) =>
+      (n.status || '').toUpperCase() !== 'RESOLVED' &&
+      (n.type || '').toUpperCase().includes('SOS'),
+  );
 
   const debouncedQuery = useDebounced(searchQuery, 300);
 
@@ -305,9 +314,14 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
               aria-expanded={showNotifications}
               className="relative text-slate-600 hover:bg-slate-100 w-10 h-10 flex items-center justify-center rounded-full transition-colors"
             >
-              <Bell className="w-5 h-5" />
+              <Bell className={cn('w-5 h-5', hasCriticalAlert && 'text-critical-600')} />
               {unresolvedCount > 0 && (
-                <span className="absolute top-0.5 right-0.5 min-w-4 h-4 px-1 bg-danger-600 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center tabular-nums">
+                <span
+                  className={cn(
+                    'absolute top-0.5 right-0.5 min-w-4 h-4 px-1 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center tabular-nums',
+                    hasCriticalAlert ? 'bg-critical-600 pulse-critical' : 'bg-danger-600',
+                  )}
+                >
                   {unresolvedCount > 9 ? '9+' : unresolvedCount}
                 </span>
               )}
@@ -318,7 +332,9 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
                 <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-2">
                   <h3 className="font-bold text-slate-800">Alerts</h3>
                   {unresolvedCount > 0 && (
-                    <Badge tone="danger">{unresolvedCount} open</Badge>
+                    <Badge tone={hasCriticalAlert ? 'critical' : 'danger'}>
+                      {unresolvedCount} open
+                    </Badge>
                   )}
                 </div>
 
@@ -344,20 +360,31 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
                             className={cn(
                               'p-4 hover:bg-slate-50 transition-colors flex gap-3',
                               resolved && 'opacity-55',
+                              critical && !resolved && 'bg-critical-50/40',
                             )}
                           >
                             <div
                               className={cn(
                                 'mt-0.5 shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
                                 critical
-                                  ? 'bg-danger-50 text-danger-600'
+                                  ? 'bg-critical-50 text-critical-600'
                                   : 'bg-warn-50 text-warn-600',
+                                critical && !resolved && 'pulse-critical',
                               )}
                             >
-                              <AlertTriangle className="w-4 h-4" aria-hidden="true" />
+                              {critical ? (
+                                <Siren className="w-4 h-4" aria-hidden="true" />
+                              ) : (
+                                <AlertTriangle className="w-4 h-4" aria-hidden="true" />
+                              )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-800">{notif.title}</p>
+                              <p className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+                                {notif.title}
+                                {critical && !resolved && (
+                                  <Badge tone="critical">SOS</Badge>
+                                )}
+                              </p>
                               {notif.message && (
                                 <p className="text-sm text-slate-600 mt-0.5">{notif.message}</p>
                               )}

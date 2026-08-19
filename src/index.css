@@ -40,6 +40,15 @@
   --color-info-100: #dbeafe;
   --color-info-500: #3b82f6;
   --color-info-600: #2563eb;
+
+  /* critical = life-safety emergency (SOS). Deliberately a louder, truer red
+     than `danger` (rose). An SOS from a school bus must never look like a
+     routine "device offline" — same-colour was the old failure. */
+  --color-critical-50: #fef2f2;
+  --color-critical-100: #fee2e2;
+  --color-critical-500: #ef4444;
+  --color-critical-600: #dc2626;
+  --color-critical-700: #991b1b;
 }
 
 @layer base {
@@ -135,6 +144,17 @@
   @keyframes shimmer {
     0%   { background-position: 200% 0; }
     100% { background-position: -200% 0; }
+  }
+
+  /* SOS attention ring — reserved for life-safety alerts only. A slow, calm
+     pulse that draws the eye without the strobing that triggers vestibular
+     issues (respects prefers-reduced-motion via the global override). */
+  @keyframes pulseCritical {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+    50%      { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
+  }
+  .pulse-critical {
+    animation: pulseCritical 1.8s ease-in-out infinite;
   }
 
   /* Page-enter fade (NNG: transitions reduce perceived load time) */

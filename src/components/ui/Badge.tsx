@@ -9,12 +9,13 @@ import { normaliseStatus } from '../../lib/format';
  * profile donut, and amber again beside a rose "warning" tile on the dashboard.
  * Semantic colour only works if one state maps to exactly one hue.
  */
-export type Tone = 'ok' | 'warn' | 'danger' | 'info' | 'neutral' | 'brand';
+export type Tone = 'ok' | 'warn' | 'danger' | 'critical' | 'info' | 'neutral' | 'brand';
 
 const TONES: Record<Tone, string> = {
   ok: 'bg-ok-50 text-ok-700 border-ok-100',
   warn: 'bg-warn-50 text-warn-700 border-warn-100',
   danger: 'bg-danger-50 text-danger-700 border-danger-100',
+  critical: 'bg-critical-50 text-critical-700 border-critical-100',
   info: 'bg-info-50 text-info-600 border-info-100',
   neutral: 'bg-slate-100 text-slate-600 border-slate-200',
   brand: 'bg-brand-50 text-brand-700 border-brand-100',
@@ -24,6 +25,7 @@ const DOT_TONES: Record<Tone, string> = {
   ok: 'bg-ok-500',
   warn: 'bg-warn-500',
   danger: 'bg-danger-500',
+  critical: 'bg-critical-600',
   info: 'bg-info-500',
   neutral: 'bg-slate-400',
   brand: 'bg-brand-500',
