@@ -13,6 +13,7 @@ import {
   ConfirmDialog,
   IconButton,
   Modal,
+  Pagination,
   SelectField,
   TextField,
   DataTable,
@@ -27,6 +28,8 @@ import {
   ErrorBanner,
   useToast,
 } from '../components/ui';
+
+const PAGE_SIZE = 25;
 
 function currentUser(): AuthUser | null {
   try {
@@ -49,6 +52,7 @@ export function Admins() {
   const [isAddOpen, setAddOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<Admin | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Admin | null>(null);
+  const [page, setPage] = useState(1);
 
   const admins = useApi(
     (signal) =>
@@ -73,7 +77,16 @@ export function Admins() {
   }, [schools.data]);
 
   const items = admins.data?.items ?? [];
+  // Counted over the full set on purpose: the "last super admin" guard below must
+  // not go blind just because that account sits on another page.
   const superAdmins = items.filter((a) => a.role === 'SUPER_ADMIN');
+
+  // Paginated on the client so the safety count above stays whole-set accurate.
+  // clamp keeps the view from stranding on an empty page after a delete/search.
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   /**
    * Nothing previously stopped an operator deleting their own account, or the
@@ -129,13 +142,23 @@ export function Admins() {
                 type="search"
                 placeholder="Name or email…"
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
+                onChange={(e) => {
+                  setSearchInput(e.target.value);
+                  setPage(1);
+                }}
                 className="w-full h-10 pl-9 pr-3 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
           </div>
           {searchInput && (
-            <Button variant="ghost" onClick={() => setSearchInput('')} icon={<X className="w-4 h-4" />}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSearchInput('');
+                setPage(1);
+              }}
+              icon={<X className="w-4 h-4" />}
+            >
               Clear
             </Button>
           )}
@@ -160,7 +183,7 @@ export function Admins() {
                 {admins.loading ? (
                   <TableSkeleton rows={5} cols={6} />
                 ) : (
-                  items.map((admin) => {
+                  pageItems.map((admin) => {
                     const blocked = deleteBlockedReason(admin);
                     return (
                       <tr key={admin.id} className="hover:bg-slate-50 transition-colors">
@@ -211,7 +234,7 @@ export function Admins() {
             </DataTable>
 
             <CardList>
-              {items.map((admin) => {
+              {pageItems.map((admin) => {
                 const blocked = deleteBlockedReason(admin);
                 return (
                   <CardRow
@@ -269,6 +292,16 @@ export function Admins() {
                     Add admin
                   </Button>
                 }
+              />
+            )}
+
+            {total > 0 && (
+              <Pagination
+                page={safePage}
+                pageSize={PAGE_SIZE}
+                total={total}
+                onPageChange={setPage}
+                noun="admins"
               />
             )}
           </>

@@ -13,7 +13,7 @@ import {
 import { api, toPage, query, errorMessage, ApiError } from '../lib/api';
 import { useApi, useDebounced } from '../lib/useApi';
 import { normaliseStatus } from '../lib/format';
-import type { School } from '../types';
+import { SCHOOL_STATUSES, type School } from '../types';
 import {
   Badge,
   Button,
@@ -41,16 +41,27 @@ import {
 } from '../components/ui';
 
 const PAGE_SIZE = 25;
-const STATUSES = ['All statuses', 'Active', 'Pending', 'Suspended'];
+// Backend enforces uppercase (ACTIVE | PENDING | SUSPENDED), so send it that way.
+const FILTERS = ['All statuses', ...SCHOOL_STATUSES] as const;
+const ALL = FILTERS[0];
 
 const BLANK_FORM = {
   name: '',
+  status: 'ACTIVE',
   address: '',
   city: '',
   state: '',
+  pincode: '',
+  // Kept as strings so an empty box stays empty. `parseFloat('') || 0` would
+  // send 0,0 — a real-looking coordinate in the Gulf of Guinea.
+  latitude: '',
+  longitude: '',
   contactPerson: '',
   contactEmail: '',
   contactPhone: '',
+  email: '',
+  phone: '',
+  website: '',
   adminName: '',
   adminEmail: '',
   adminPassword: '',
@@ -58,19 +69,31 @@ const BLANK_FORM = {
   licensePlate: '',
 };
 
+/** Empty -> undefined, never 0. */
+function toCoord(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function blank(value: string): string | undefined {
+  return value.trim() ? value.trim() : undefined;
+}
+
 export function Schools() {
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [searchInput, setSearchInput] = useState(searchParams.get('q') ?? '');
   const search = useDebounced(searchInput, 300);
-  const [status, setStatus] = useState(searchParams.get('status') ?? STATUSES[0]);
+  const [status, setStatus] = useState(searchParams.get('status') ?? ALL);
   const [page, setPage] = useState(1);
 
   const [isAddOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<School | null>(null);
 
-  const statusParam = status === STATUSES[0] ? undefined : status;
+  const statusParam = status === ALL ? undefined : status;
 
   const schools = useApi(
     (signal) =>
@@ -98,12 +121,12 @@ export function Schools() {
 
   const resetFilters = () => {
     setSearchInput('');
-    setStatus(STATUSES[0]);
+    setStatus(ALL);
     setPage(1);
     setSearchParams({}, { replace: true });
   };
 
-  const filtersActive = !!searchInput || status !== STATUSES[0];
+  const filtersActive = !!searchInput || status !== ALL;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -158,8 +181,11 @@ export function Schools() {
             }}
             wrapperClassName="w-full sm:w-48"
           >
-            {STATUSES.map((s) => (
-              <option key={s}>{s}</option>
+            {FILTERS.map((s) => (
+              // Value stays uppercase for the API; the label reads normally.
+              <option key={s} value={s}>
+                {s === ALL ? s : s.charAt(0) + s.slice(1).toLowerCase()}
+              </option>
             ))}
           </SelectField>
 
@@ -408,6 +434,14 @@ function AddSchoolModal({
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (submitting) return; // a double-click used to create the school twice
+
+    const lat = toCoord(form.latitude);
+    const lng = toCoord(form.longitude);
+    if ((lat === undefined) !== (lng === undefined)) {
+      setError('Enter both latitude and longitude, or leave both blank.');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     setWarnings([]);
@@ -415,12 +449,19 @@ function AddSchoolModal({
     try {
       const created = await api.post<any>('/api/schools', {
         name: form.name,
-        address: form.address,
-        city: form.city,
-        state: form.state,
-        contactPerson: form.contactPerson,
-        contactEmail: form.contactEmail || undefined,
-        contactPhone: form.contactPhone || undefined,
+        status: form.status,
+        address: blank(form.address),
+        city: blank(form.city),
+        state: blank(form.state),
+        pincode: blank(form.pincode),
+        latitude: lat,
+        longitude: lng,
+        contactPerson: blank(form.contactPerson),
+        contactEmail: blank(form.contactEmail),
+        contactPhone: blank(form.contactPhone),
+        email: blank(form.email),
+        phone: blank(form.phone),
+        website: blank(form.website),
       });
 
       const schoolId = created?.id ?? created?.data?.id;
@@ -516,34 +557,118 @@ function AddSchoolModal({
           </div>
         )}
 
-        <TextField label="School name" required value={form.name} onChange={set('name')} />
-        <TextField
-          label="Contact person"
-          required
-          value={form.contactPerson}
-          onChange={set('contactPerson')}
-        />
-        <div className="grid sm:grid-cols-2 gap-4">
-          <TextField
-            label="Contact email"
-            type="email"
-            value={form.contactEmail}
-            onChange={set('contactEmail')}
-            placeholder="principal@school.edu.in"
-          />
-          <TextField
-            label="Contact phone"
-            type="tel"
-            value={form.contactPhone}
-            onChange={set('contactPhone')}
-            placeholder="+91 98765 43210"
-          />
+        <div className="grid sm:grid-cols-[1fr_10rem] gap-4">
+          <TextField label="School name" required value={form.name} onChange={set('name')} />
+          <SelectField
+            label="Status"
+            value={form.status}
+            onChange={set('status')}
+            hint="Pending hides it from active reporting."
+          >
+            {SCHOOL_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s.charAt(0) + s.slice(1).toLowerCase()}
+              </option>
+            ))}
+          </SelectField>
         </div>
-        <TextField label="Address" required value={form.address} onChange={set('address')} />
-        <div className="grid sm:grid-cols-2 gap-4">
-          <TextField label="City" required value={form.city} onChange={set('city')} />
-          <TextField label="State" required value={form.state} onChange={set('state')} />
-        </div>
+
+        <fieldset className="pt-4 border-t border-slate-100">
+          <legend className="label mb-3">Address</legend>
+          <div className="space-y-4">
+            <TextField label="Street address" required value={form.address} onChange={set('address')} />
+            <div className="grid sm:grid-cols-3 gap-4">
+              <TextField label="City" required value={form.city} onChange={set('city')} />
+              <TextField label="State" required value={form.state} onChange={set('state')} />
+              <TextField
+                label="Pincode"
+                inputMode="numeric"
+                value={form.pincode}
+                onChange={set('pincode')}
+                placeholder="110001"
+              />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <TextField
+                label="Latitude"
+                type="number"
+                step="any"
+                value={form.latitude}
+                onChange={set('latitude')}
+                placeholder="28.7041"
+              />
+              <TextField
+                label="Longitude"
+                type="number"
+                step="any"
+                value={form.longitude}
+                onChange={set('longitude')}
+                placeholder="77.1025"
+              />
+            </div>
+            <p className="text-xs text-slate-500">
+              Coordinates draw the location map on the school's profile. Leave both blank if you
+              don't have them yet — you can add them later from Edit profile.
+            </p>
+          </div>
+        </fieldset>
+
+        <fieldset className="pt-4 border-t border-slate-100">
+          <legend className="label mb-3">Primary contact</legend>
+          <div className="space-y-4">
+            <TextField
+              label="Contact person"
+              required
+              value={form.contactPerson}
+              onChange={set('contactPerson')}
+              hint="The person you call about this school's fleet."
+            />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <TextField
+                label="Their email"
+                type="email"
+                value={form.contactEmail}
+                onChange={set('contactEmail')}
+                placeholder="principal@school.edu.in"
+              />
+              <TextField
+                label="Their phone"
+                type="tel"
+                value={form.contactPhone}
+                onChange={set('contactPhone')}
+                placeholder="+91 98765 43210"
+              />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset className="pt-4 border-t border-slate-100">
+          <legend className="label mb-3">School office</legend>
+          <div className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <TextField
+                label="Office email"
+                type="email"
+                value={form.email}
+                onChange={set('email')}
+                placeholder="office@school.edu.in"
+              />
+              <TextField
+                label="Office phone"
+                type="tel"
+                value={form.phone}
+                onChange={set('phone')}
+                placeholder="+91 11 2345 6789"
+              />
+            </div>
+            <TextField
+              label="Website"
+              value={form.website}
+              onChange={set('website')}
+              placeholder="school.edu.in"
+            />
+          </div>
+        </fieldset>
 
         <fieldset className="pt-4 border-t border-slate-100">
           <legend className="label mb-3">Initial admin (optional)</legend>

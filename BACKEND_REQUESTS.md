@@ -9,6 +9,25 @@ every case — but the P1 items are covering real gaps with workarounds.
 
 ---
 
+## Closed — confirmed by backend, 16 Aug 2026
+
+- **`GET /api/schools/:id`** — shipped. The profile page's search fallback is now
+  a backstop, not the main path.
+- **Server-side status filtering** on `/api/schools` and `/api/devices` — shipped.
+  The "filtering isn't supported" banner should never appear now; if it does,
+  the filter has regressed.
+- **`PUT /api/schools/:id` 500** — fixed.
+- **School contact fields** — `contactEmail`, `contactPhone`, `email`, `phone`,
+  `website`, `pincode`, `latitude`, `longitude` all exist on the model and are
+  accepted by the `createSchool` Zod schema. Wired into both the Add and Edit
+  forms.
+- **Status casing** — confirmed `ACTIVE | PENDING | SUSPENDED`, enforced by a Zod
+  enum. The frontend sends uppercase and displays it title-cased.
+
+Items 1, 2, 3 and 5 in the P1 list below are kept for history — they're done.
+
+---
+
 ## P1 — the console is working around a missing capability
 
 ### 1. `GET /api/schools/:id`
@@ -219,6 +238,76 @@ directly and the `server.ts` proxy is bypassed. The Firebase deploy serves
 
 That means CORS on the API has to allow the Firebase hosting origin directly.
 Worth confirming which of the two deployment models we're committing to.
+
+---
+
+## New, opened 16 Aug 2026 after the School schema landed
+
+### 21. Device model + `createDevice` Zod schema
+
+We got the School model; we need the Device equivalent:
+
+    sed -n '/^model Device/,/^}/p' prisma/schema.postgresql.prisma
+
+**Why:** the reply said `POST /api/devices` doesn't accept `serialNumber` and
+suggested mapping `serialNumber` → `deviceId`. We have **not** done that, because
+they're different identifiers: `deviceId` is how the platform addresses the unit,
+`serialNumber` is what's physically printed on it for RMA and warranty. Folding
+one into the other means an RMA can't be traced back to a platform record.
+
+What we did instead: removed the serial number input from the provisioning form,
+since sending a field the API drops is worse than not offering it. The device
+tables still have a Serial number column because `GET` may still return it.
+
+Please confirm one of:
+- `serialNumber` exists on the Device model → add it to `createDevice` and we'll
+  restore the input, or
+- it doesn't exist at all → we'll drop the column and stop referencing it.
+
+### 22. `email`/`phone` vs `contactEmail`/`contactPhone` — which is authoritative?
+
+The School model has both pairs. We've assumed:
+- `contactEmail` / `contactPhone` = the named `contactPerson`'s own details
+- `email` / `phone` = the school's general office line
+
+The Add and Edit forms are labelled that way ("Their email" vs "Office email").
+If that's backwards, or if one pair is legacy and should be ignored, tell us
+before real data goes in — otherwise contacts land in the wrong column and
+nobody notices.
+
+### 23. Are `activeBuses` / `totalBuses` returned on the school payload?
+
+They aren't columns on the model — the relations are `buses Bus[]`. The schools
+table and dashboard render `school.activeBuses`, so if the API doesn't compute
+and return them, every school shows 0 buses.
+
+If they're computed, say so and we'll leave it. If not, we need either those two
+counts on the list payload, or the summary endpoint in item 7.
+
+### 24. Onboarding fields the product needs but the model doesn't have
+
+Not blocking, but these are real gaps for a school-bus product. Roughly in
+priority order:
+
+1. **School start / end timings** and **operating days**. This is the big one.
+   Without it nothing can distinguish a normal silent device from an alarming
+   one — a bus quiet at 14:00 is parked, the same bus quiet at 07:15 means
+   children are waiting. `offlineAlertMinutes` in Settings is currently one flat
+   global number precisely because there's no per-school schedule to compare
+   against.
+2. **Transport in-charge** as a contact distinct from `contactPerson`. At 07:00
+   you call the transport in-charge, not the principal.
+3. **Expected bus count** — "3 devices reporting" is meaningless without knowing
+   whether 3 or 12 were expected.
+4. **Board / affiliation** (CBSE, ICSE, State, IB) and affiliation number — how
+   schools are officially identified.
+5. **Legal entity name, GSTIN** — the invoice goes to the trust or society, whose
+   name usually differs from the school's.
+6. **Contract start date, plan tier** — nothing captures the commercial
+   relationship today.
+
+If any of these are planned, tell us the field names up front and we'll build the
+form once instead of twice.
 
 ---
 

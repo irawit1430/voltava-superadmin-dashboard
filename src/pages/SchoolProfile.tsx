@@ -15,6 +15,7 @@ import {
   Cpu,
   ExternalLink,
   ArrowLeft,
+  Unlink,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
@@ -24,13 +25,15 @@ import 'leaflet/dist/leaflet.css';
 import { api, toPage, query, errorMessage, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
 import { formatDate, relativeTime, isOnline, isValidLatLng, freshness } from '../lib/format';
-import type { School, Device, SchoolStats } from '../types';
+import { SCHOOL_STATUSES, type School, type Device, type SchoolStats } from '../types';
 import {
   Badge,
   Button,
   Card,
   CardHeader,
+  ConfirmDialog,
   DeviceStatusBadge,
+  IconButton,
   Modal,
   SchoolStatusBadge,
   SelectField,
@@ -53,12 +56,21 @@ import { cn } from '../lib/utils';
 /** Device health colours match the rest of the app: ok green, danger rose. */
 const HEALTH_COLOURS = { healthy: '#10b981', unhealthy: '#f43f5e' };
 
+/** Empty -> undefined, never 0. 0,0 is a real point in the Gulf of Guinea. */
+function toCoord(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export function SchoolProfile() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
 
   const [isEditOpen, setEditOpen] = useState(false);
   const [isAssignOpen, setAssignOpen] = useState(false);
+  const [unassignTarget, setUnassignTarget] = useState<Device | null>(null);
 
   /**
    * Fetch the one school by ID.
@@ -280,6 +292,18 @@ export function SchoolProfile() {
               href={s.contactPhone ? `tel:${s.contactPhone.replace(/\s+/g, '')}` : undefined}
             />
             <Contact
+              icon={<Mail className="w-4 h-4" />}
+              label="Office email"
+              value={s.email}
+              href={s.email ? `mailto:${s.email}` : undefined}
+            />
+            <Contact
+              icon={<Phone className="w-4 h-4" />}
+              label="Office phone"
+              value={s.phone}
+              href={s.phone ? `tel:${s.phone.replace(/\s+/g, '')}` : undefined}
+            />
+            <Contact
               icon={<Globe className="w-4 h-4" />}
               label="Website"
               value={s.website}
@@ -449,11 +473,12 @@ export function SchoolProfile() {
                   <Th>Registered</Th>
                   <Th>Last ping</Th>
                   <Th>Status</Th>
+                  <Th align="right">Actions</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {devices.loading ? (
-                  <TableSkeleton rows={4} cols={6} />
+                  <TableSkeleton rows={4} cols={7} />
                 ) : (
                   deviceList.map((device) => (
                     <tr key={device.id} className="hover:bg-slate-50 transition-colors">
@@ -476,6 +501,14 @@ export function SchoolProfile() {
                       <Td>
                         <DeviceStatusBadge status={device.status} />
                       </Td>
+                      <Td align="right">
+                        <IconButton
+                          label={`Unassign ${device.deviceId} from ${s.name}`}
+                          onClick={() => setUnassignTarget(device)}
+                        >
+                          <Unlink className="w-4 h-4" />
+                        </IconButton>
+                      </Td>
                     </tr>
                   ))
                 )}
@@ -493,6 +526,17 @@ export function SchoolProfile() {
                     { label: 'Serial', value: device.serialNumber || '—' },
                     { label: 'Last ping', value: relativeTime(device.lastPing) },
                   ]}
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => setUnassignTarget(device)}
+                      icon={<Unlink className="w-3.5 h-3.5" />}
+                    >
+                      Unassign
+                    </Button>
+                  }
                 />
               ))}
             </CardList>
@@ -532,6 +576,22 @@ export function SchoolProfile() {
           toast.success('Device assigned', `${device.deviceId} now belongs to ${s.name}.`);
           // Refresh both — the KPI tiles above are derived from the school's own
           // stats, which the old code left showing pre-assignment numbers.
+          devices.reload();
+          stats.reload();
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!unassignTarget}
+        onClose={() => setUnassignTarget(null)}
+        title={`Unassign ${unassignTarget?.deviceId ?? 'device'}?`}
+        body={`It stops reporting for ${s.name} and returns to the unassigned pool, where it can be assigned to another school. The tracker itself is not deleted.`}
+        confirmLabel="Unassign device"
+        onConfirm={async () => {
+          if (!unassignTarget) return;
+          // Detach by clearing the school — the same PUT the assign flow uses.
+          await api.put(`/api/devices/${unassignTarget.id}`, { schoolId: null });
+          toast.success(`${unassignTarget.deviceId} unassigned`);
           devices.reload();
           stats.reload();
         }}
@@ -636,32 +696,31 @@ function EditSchoolModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState({
+  const seed = () => ({
     name: school.name ?? '',
+    status: (school.status ?? 'ACTIVE').toUpperCase(),
     address: school.address ?? '',
     city: school.city ?? '',
     state: school.state ?? '',
+    pincode: school.pincode ?? '',
+    latitude: school.latitude != null ? String(school.latitude) : '',
+    longitude: school.longitude != null ? String(school.longitude) : '',
     contactPerson: school.contactPerson ?? '',
     contactEmail: school.contactEmail ?? '',
     contactPhone: school.contactPhone ?? '',
+    email: school.email ?? '',
+    phone: school.phone ?? '',
     website: school.website ?? '',
   });
+
+  const [form, setForm] = useState(seed);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [seeded, setSeeded] = useState(false);
 
   if (open && !seeded) {
     setSeeded(true);
-    setForm({
-      name: school.name ?? '',
-      address: school.address ?? '',
-      city: school.city ?? '',
-      state: school.state ?? '',
-      contactPerson: school.contactPerson ?? '',
-      contactEmail: school.contactEmail ?? '',
-      contactPhone: school.contactPhone ?? '',
-      website: school.website ?? '',
-    });
+    setForm(seed());
     setError(null);
   }
 
@@ -674,10 +733,34 @@ function EditSchoolModal({
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (submitting) return;
+
+    const lat = toCoord(form.latitude);
+    const lng = toCoord(form.longitude);
+    if ((lat === undefined) !== (lng === undefined)) {
+      setError('Enter both latitude and longitude, or clear both.');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
-      await api.put(`/api/schools/${school.id}`, form);
+      await api.put(`/api/schools/${school.id}`, {
+        name: form.name,
+        status: form.status,
+        address: form.address || null,
+        city: form.city || null,
+        state: form.state || null,
+        pincode: form.pincode || null,
+        // null clears a coordinate; undefined would leave the old value behind.
+        latitude: lat ?? null,
+        longitude: lng ?? null,
+        contactPerson: form.contactPerson || null,
+        contactEmail: form.contactEmail || null,
+        contactPhone: form.contactPhone || null,
+        email: form.email || null,
+        phone: form.phone || null,
+        website: form.website || null,
+      });
       onSaved();
       close();
     } catch (err) {
@@ -707,54 +790,127 @@ function EditSchoolModal({
     >
       <form id="edit-school-form" onSubmit={submit} className="space-y-4">
         {error && <ErrorBanner message={error} />}
-        <TextField
-          label="School name"
-          required
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-        />
-        <TextField
-          label="Contact person"
-          value={form.contactPerson}
-          onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
-        />
-        <div className="grid sm:grid-cols-2 gap-4">
+
+        <div className="grid sm:grid-cols-[1fr_10rem] gap-4">
           <TextField
-            label="Contact email"
-            type="email"
-            value={form.contactEmail}
-            onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+            label="School name"
+            required
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
-          <TextField
-            label="Contact phone"
-            type="tel"
-            value={form.contactPhone}
-            onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
-          />
+          <SelectField
+            label="Status"
+            value={form.status}
+            onChange={(e) => setForm({ ...form, status: e.target.value })}
+          >
+            {SCHOOL_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s.charAt(0) + s.slice(1).toLowerCase()}
+              </option>
+            ))}
+          </SelectField>
         </div>
-        <TextField
-          label="Website"
-          value={form.website}
-          onChange={(e) => setForm({ ...form, website: e.target.value })}
-          placeholder="school.edu.in"
-        />
-        <TextField
-          label="Address"
-          value={form.address}
-          onChange={(e) => setForm({ ...form, address: e.target.value })}
-        />
-        <div className="grid sm:grid-cols-2 gap-4">
-          <TextField
-            label="City"
-            value={form.city}
-            onChange={(e) => setForm({ ...form, city: e.target.value })}
-          />
-          <TextField
-            label="State"
-            value={form.state}
-            onChange={(e) => setForm({ ...form, state: e.target.value })}
-          />
-        </div>
+
+        <fieldset className="pt-4 border-t border-slate-100">
+          <legend className="label mb-3">Address</legend>
+          <div className="space-y-4">
+            <TextField
+              label="Street address"
+              value={form.address}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+            />
+            <div className="grid sm:grid-cols-3 gap-4">
+              <TextField
+                label="City"
+                value={form.city}
+                onChange={(e) => setForm({ ...form, city: e.target.value })}
+              />
+              <TextField
+                label="State"
+                value={form.state}
+                onChange={(e) => setForm({ ...form, state: e.target.value })}
+              />
+              <TextField
+                label="Pincode"
+                inputMode="numeric"
+                value={form.pincode}
+                onChange={(e) => setForm({ ...form, pincode: e.target.value })}
+              />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <TextField
+                label="Latitude"
+                type="number"
+                step="any"
+                value={form.latitude}
+                onChange={(e) => setForm({ ...form, latitude: e.target.value })}
+                placeholder="28.7041"
+              />
+              <TextField
+                label="Longitude"
+                type="number"
+                step="any"
+                value={form.longitude}
+                onChange={(e) => setForm({ ...form, longitude: e.target.value })}
+                placeholder="77.1025"
+              />
+            </div>
+            <p className="text-xs text-slate-500">
+              Coordinates draw the location map above. Clear both to remove it.
+            </p>
+          </div>
+        </fieldset>
+
+        <fieldset className="pt-4 border-t border-slate-100">
+          <legend className="label mb-3">Primary contact</legend>
+          <div className="space-y-4">
+            <TextField
+              label="Contact person"
+              value={form.contactPerson}
+              onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
+            />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <TextField
+                label="Their email"
+                type="email"
+                value={form.contactEmail}
+                onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+              />
+              <TextField
+                label="Their phone"
+                type="tel"
+                value={form.contactPhone}
+                onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
+              />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset className="pt-4 border-t border-slate-100">
+          <legend className="label mb-3">School office</legend>
+          <div className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <TextField
+                label="Office email"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+              <TextField
+                label="Office phone"
+                type="tel"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              />
+            </div>
+            <TextField
+              label="Website"
+              value={form.website}
+              onChange={(e) => setForm({ ...form, website: e.target.value })}
+              placeholder="school.edu.in"
+            />
+          </div>
+        </fieldset>
       </form>
     </Modal>
   );

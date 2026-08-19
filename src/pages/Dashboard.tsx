@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   TrendingUp,
+  TrendingDown,
   AlertTriangle,
   Building2,
   Bus,
@@ -16,6 +17,7 @@ import 'leaflet/dist/leaflet.css';
 
 import { api, toPage, query } from '../lib/api';
 import { useApi } from '../lib/useApi';
+import { busIcon } from '../lib/busIcon';
 import { formatNumber, formatTime, relativeTime } from '../lib/format';
 import { useFleet } from '../context/FleetProvider';
 import { useSettings } from '../context/SettingsProvider';
@@ -85,34 +87,23 @@ export function Dashboard() {
           value={stats.data?.totalSchools ?? '—'}
           loading={stats.loading}
           icon={<Building2 className="w-3.5 h-3.5" />}
-          hint={
-            stats.data?.schoolsGrowthPercent != null ? (
-              <span className="flex items-center gap-1 text-ok-700 text-xs font-semibold mb-1">
-                <TrendingUp className="w-3 h-3" aria-hidden="true" />+
-                {stats.data.schoolsGrowthPercent}%
-              </span>
-            ) : undefined
-          }
+          hint={<GrowthHint percent={stats.data?.schoolsGrowthPercent} />}
         />
         <KpiCard
           label="Buses running"
           value={stats.data?.totalBuses ?? '—'}
           loading={stats.loading}
           icon={<Bus className="w-3.5 h-3.5" />}
-          hint={
-            stats.data?.busesGrowthPercent != null ? (
-              <span className="flex items-center gap-1 text-ok-700 text-xs font-semibold mb-1">
-                <TrendingUp className="w-3 h-3" aria-hidden="true" />+
-                {stats.data.busesGrowthPercent}%
-              </span>
-            ) : undefined
-          }
+          hint={<GrowthHint percent={stats.data?.busesGrowthPercent} />}
         />
         <KpiCard
           label="Offline GPS devices"
           value={stats.data?.offlineDevices ?? '—'}
           loading={stats.loading}
-          tone="danger"
+          // 0 offline is a healthy state, not an alarm — only go red when there
+          // is actually something to review. Mirrors the "Silent over 30 min"
+          // tile on the Devices page.
+          tone={(stats.data?.offlineDevices ?? 0) > 0 ? 'danger' : 'neutral'}
           icon={<AlertTriangle className="w-3.5 h-3.5" />}
           hint={
             (stats.data?.offlineDevices ?? 0) > 0 ? (
@@ -383,6 +374,29 @@ export function Dashboard() {
 /* ------------------------------------------------------------------ */
 
 /**
+ * A growth figure that tells the truth about its own sign. The old markup
+ * hardcoded a leading "+" and a green up-arrow, so a negative period rendered
+ * as "+-5%" in green pointing up — the opposite of what happened.
+ */
+function GrowthHint({ percent }: { percent?: number | null }) {
+  if (percent == null) return null;
+  const up = percent >= 0;
+  const Icon = up ? TrendingUp : TrendingDown;
+  return (
+    <span
+      className={cn(
+        'flex items-center gap-1 text-xs font-semibold mb-1 tabular-nums',
+        up ? 'text-ok-700' : 'text-danger-700',
+      )}
+    >
+      <Icon className="w-3 h-3" aria-hidden="true" />
+      {up ? '+' : ''}
+      {percent}%
+    </span>
+  );
+}
+
+/**
  * Was a permanent green "REAL-TIME MONITORING" pill that never consulted the
  * socket. If the connection dropped, the map froze and this kept insisting the
  * data was live.
@@ -478,18 +492,4 @@ function FitToFleet({ points }: { points: [number, number][] }) {
   }, [points, map, hasFitted]);
 
   return null;
-}
-
-function busIcon(speed: number, connected: boolean) {
-  // Grey when the feed is down: a marker that looks "active" while the socket is
-  // dead is exactly the state we're trying to make visible.
-  const colour = !connected ? '#64748b' : speed > 0 ? '#10b981' : '#f59e0b';
-  return L.divIcon({
-    html: `<div style="background-color:${colour};width:28px;height:28px;border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(0,0,0,.5)">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/></svg>
-    </div>`,
-    className: '',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-  });
 }

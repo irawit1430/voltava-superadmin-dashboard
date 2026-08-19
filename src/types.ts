@@ -7,6 +7,7 @@
  * `normaliseStatus()` in lib/format.ts instead of `=== 'Active'`.
  */
 
+/** Mirrors the Prisma `School` model as deployed (confirmed 16 Aug 2026). */
 export interface School {
   id: string;
   name: string;
@@ -15,16 +16,27 @@ export interface School {
   state?: string | null;
   pincode?: string | null;
   contactPerson?: string | null;
+  /** The named contact's own address/number. */
   contactEmail?: string | null;
   contactPhone?: string | null;
+  /** The school's general office line. Separate columns from the two above. */
+  email?: string | null;
+  phone?: string | null;
   website?: string | null;
   latitude?: number | null;
   longitude?: number | null;
-  activeBuses?: number | null;
-  totalBuses?: number | null;
+  /** Server-side enum: ACTIVE | PENDING | SUSPENDED. Always compare uppercase. */
   status?: string | null;
   createdAt?: string | null;
+  updatedAt?: string | null;
+  /** Derived, not columns on the model — only present if the API computes them. */
+  activeBuses?: number | null;
+  totalBuses?: number | null;
 }
+
+/** The values the backend Zod enum accepts. */
+export const SCHOOL_STATUSES = ['ACTIVE', 'PENDING', 'SUSPENDED'] as const;
+export type SchoolStatus = (typeof SCHOOL_STATUSES)[number];
 
 export interface Device {
   id: string;

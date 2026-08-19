@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Cpu, Search, X, Plus, Trash2, Copy, Check, ShieldAlert } from 'lucide-react';
+import { Cpu, Search, X, Plus, Trash2, Pencil, Copy, Check, ShieldAlert } from 'lucide-react';
 import { api, toPage, query, errorMessage } from '../lib/api';
 import { useApi, useDebounced } from '../lib/useApi';
 import { relativeTime, freshness, normaliseStatus, isOnline, STALE_MINUTES } from '../lib/format';
@@ -50,6 +50,7 @@ export function Devices() {
   const [staleFirst, setStaleFirst] = useState(false);
 
   const [isAddOpen, setAddOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Device | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Device | null>(null);
   const [secret, setSecret] = useState<{ deviceId: string; value: string } | null>(null);
 
@@ -269,13 +270,21 @@ export function Devices() {
                         <DeviceStatusBadge status={device.status} />
                       </Td>
                       <Td align="right">
-                        <IconButton
-                          label={`Delete ${device.deviceId}`}
-                          tone="danger"
-                          onClick={() => setDeleteTarget(device)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </IconButton>
+                        <div className="flex items-center justify-end gap-1">
+                          <IconButton
+                            label={`Edit ${device.deviceId}`}
+                            onClick={() => setEditTarget(device)}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </IconButton>
+                          <IconButton
+                            label={`Delete ${device.deviceId}`}
+                            tone="danger"
+                            onClick={() => setDeleteTarget(device)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </IconButton>
+                        </div>
                       </Td>
                     </tr>
                   ))
@@ -296,14 +305,25 @@ export function Devices() {
                     { label: 'Last ping', value: <LastPing value={device.lastPing} /> },
                   ]}
                   actions={
-                    <Button
-                      size="sm"
-                      variant="dangerGhost"
-                      onClick={() => setDeleteTarget(device)}
-                      icon={<Trash2 className="w-3.5 h-3.5" />}
-                    >
-                      Delete
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="flex-1"
+                        onClick={() => setEditTarget(device)}
+                        icon={<Pencil className="w-3.5 h-3.5" />}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="dangerGhost"
+                        onClick={() => setDeleteTarget(device)}
+                        icon={<Trash2 className="w-3.5 h-3.5" />}
+                      >
+                        Delete
+                      </Button>
+                    </>
                   }
                 />
               ))}
@@ -355,6 +375,16 @@ export function Devices() {
           if (device.deviceSecret) {
             setSecret({ deviceId: device.deviceId, value: device.deviceSecret });
           }
+          devices.reload();
+        }}
+      />
+
+      <EditDeviceModal
+        device={editTarget}
+        schools={schools.data?.items ?? []}
+        onClose={() => setEditTarget(null)}
+        onSaved={(device) => {
+          toast.success('Device updated', `${device.deviceId} saved.`);
           devices.reload();
         }}
       />
@@ -414,7 +444,6 @@ function ProvisionModal({
 }) {
   const [form, setForm] = useState({
     deviceId: '',
-    serialNumber: '',
     licensePlate: '',
     schoolId: '',
   });
@@ -422,7 +451,7 @@ function ProvisionModal({
   const [error, setError] = useState<string | null>(null);
 
   const close = () => {
-    setForm({ deviceId: '', serialNumber: '', licensePlate: '', schoolId: '' });
+    setForm({ deviceId: '', licensePlate: '', schoolId: '' });
     setError(null);
     onClose();
   };
@@ -433,9 +462,12 @@ function ProvisionModal({
     setSubmitting(true);
     setError(null);
     try {
+      // `serialNumber` is deliberately not sent: the backend confirmed
+      // POST /api/devices does not accept it. Collecting a field that gets
+      // silently dropped is worse than not offering it, so the input is gone
+      // too — see the open ask for the Device model in BACKEND_REQUESTS.md.
       const device = await api.post<Device>('/api/devices', {
         deviceId: form.deviceId,
-        serialNumber: form.serialNumber || undefined,
         licensePlate: form.licensePlate || undefined,
         schoolId: form.schoolId || undefined,
       });
@@ -473,12 +505,7 @@ function ProvisionModal({
           value={form.deviceId}
           onChange={(e) => setForm({ ...form, deviceId: e.target.value })}
           placeholder="TM100-XXX"
-        />
-        <TextField
-          label="Serial number"
-          value={form.serialNumber}
-          onChange={(e) => setForm({ ...form, serialNumber: e.target.value })}
-          hint="Printed on the unit. Needed for RMAs and field swaps."
+          hint="The identifier printed on the unit. This is what the API stores."
         />
         <TextField
           label="License plate"
@@ -491,6 +518,120 @@ function ProvisionModal({
           value={form.schoolId}
           onChange={(e) => setForm({ ...form, schoolId: e.target.value })}
           hint="Can be assigned later from the school's profile."
+        >
+          <option value="">Unassigned</option>
+          {schools.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </SelectField>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Editing was missing entirely: a wrong plate or a device on the wrong school
+ * could only be fixed by deleting and re-provisioning, which mints a new secret
+ * and forces the unit back through onboarding. `deviceId` stays read-only — it's
+ * how the platform addresses the unit, so changing it here would orphan the
+ * hardware rather than rename it.
+ */
+function EditDeviceModal({
+  device,
+  schools,
+  onClose,
+  onSaved,
+}: {
+  device: Device | null;
+  schools: School[];
+  onClose: () => void;
+  onSaved: (device: Device) => void;
+}) {
+  const [form, setForm] = useState({ licensePlate: '', schoolId: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [seeded, setSeeded] = useState<string | null>(null);
+
+  // Seed once per device, the same pattern the school and admin edit forms use.
+  if (device && seeded !== device.id) {
+    setSeeded(device.id);
+    setForm({
+      licensePlate: device.licensePlate ?? '',
+      schoolId: device.schoolId ?? '',
+    });
+    setError(null);
+  }
+
+  const close = () => {
+    setSeeded(null);
+    setError(null);
+    onClose();
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!device || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      // null clears the value; the assign flow already uses PUT for schoolId.
+      const updated = await api.put<Device>(`/api/devices/${device.id}`, {
+        licensePlate: form.licensePlate.trim() || null,
+        schoolId: form.schoolId || null,
+      });
+      onSaved(updated);
+      close();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={!!device}
+      onClose={close}
+      title={`Edit ${device?.deviceId ?? 'device'}`}
+      description="Change the vehicle plate or which school this tracker belongs to."
+      footer={
+        <>
+          <Button variant="secondary" onClick={close} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button type="submit" form="edit-device-form" loading={submitting}>
+            Save changes
+          </Button>
+        </>
+      }
+    >
+      <form id="edit-device-form" onSubmit={submit} className="space-y-4">
+        {error && <ErrorBanner message={error} />}
+
+        <div>
+          <p className="label mb-1.5">Device ID</p>
+          <div className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono text-sm text-slate-600 break-all">
+            {device?.deviceId}
+          </div>
+          <p className="text-xs text-slate-500 mt-1.5">
+            How the platform addresses this unit. It can't be changed here.
+          </p>
+        </div>
+
+        <TextField
+          label="License plate"
+          value={form.licensePlate}
+          onChange={(e) => setForm({ ...form, licensePlate: e.target.value })}
+          placeholder="DL1P-1234"
+        />
+
+        <SelectField
+          label="Assigned school"
+          value={form.schoolId}
+          onChange={(e) => setForm({ ...form, schoolId: e.target.value })}
+          hint="Choose Unassigned to detach it from its current school."
         >
           <option value="">Unassigned</option>
           {schools.map((s) => (

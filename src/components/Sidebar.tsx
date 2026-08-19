@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, GraduationCap, Cpu, Users, Settings, X } from 'lucide-react';
+import { LayoutDashboard, Map as MapIcon, GraduationCap, Cpu, Users, Settings, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFleet } from '../context/FleetProvider';
 import { relativeTime } from '../lib/format';
 
 const LINKS = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, end: true },
+  { name: 'Live Map', href: '/map', icon: MapIcon, end: false },
   { name: 'Schools', href: '/schools', icon: GraduationCap, end: false },
   { name: 'Hardware Devices', href: '/devices', icon: Cpu, end: false },
   { name: 'Admins', href: '/admins', icon: Users, end: false },

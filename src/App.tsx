@@ -14,6 +14,7 @@ import { ToastProvider } from './components/ui';
 const Dashboard = React.lazy(() =>
   import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })),
 );
+const LiveMap = React.lazy(() => import('./pages/LiveMap').then((m) => ({ default: m.LiveMap })));
 const Schools = React.lazy(() => import('./pages/Schools').then((m) => ({ default: m.Schools })));
 const SchoolProfile = React.lazy(() =>
   import('./pages/SchoolProfile').then((m) => ({ default: m.SchoolProfile })),
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<Layout />}>
             <Route index element={<Screen label="Dashboard"><Dashboard /></Screen>} />
+            <Route path="map" element={<Screen label="Live map"><LiveMap /></Screen>} />
             <Route path="schools" element={<Screen label="Schools"><Schools /></Screen>} />
             <Route
               path="schools/:id"
