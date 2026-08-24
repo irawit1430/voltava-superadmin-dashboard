@@ -91,10 +91,12 @@ export function FleetProvider({ children }: { children: ReactNode }) {
         const { items } = toPage<any>(data);
         const next: Record<string, BusLocation> = {};
         for (const raw of items) {
-          const lat = Number(raw.lastKnownLat ?? raw.lat);
-          const lng = Number(raw.lastKnownLng ?? raw.lng);
+          const lat = Number(raw.lastKnownLat ?? raw.lat ?? raw.latitude);
+          const lng = Number(raw.lastKnownLng ?? raw.lng ?? raw.longitude);
           if (!isValidLatLng(lat, lng)) continue; // never hand Leaflet a null fix
-          const busId = String(raw.busId ?? raw.deviceId ?? raw.id);
+          const rawBusId = raw.busId ?? raw.deviceId ?? raw.id;
+          if (!rawBusId) continue;
+          const busId = String(rawBusId);
           next[busId] = {
             busId,
             lat,
@@ -181,11 +183,12 @@ export function FleetProvider({ children }: { children: ReactNode }) {
     });
 
     socket.on('location_update', (data: any) => {
-      const lat = Number(data?.lat ?? data?.lastKnownLat);
-      const lng = Number(data?.lng ?? data?.lastKnownLng);
-      const busId = String(data?.busId ?? data?.deviceId ?? data?.id);
+      const lat = Number(data?.lat ?? data?.lastKnownLat ?? data?.latitude);
+      const lng = Number(data?.lng ?? data?.lastKnownLng ?? data?.longitude);
+      const rawBusId = data?.busId ?? data?.deviceId ?? data?.id;
       setLastEventAt(Date.now());
-      if (!busId || !isValidLatLng(lat, lng)) return;
+      if (!rawBusId || !isValidLatLng(lat, lng)) return;
+      const busId = String(rawBusId);
       setLocations((prev) => ({
         ...prev,
         [busId]: {
