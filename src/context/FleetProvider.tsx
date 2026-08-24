@@ -91,14 +91,15 @@ export function FleetProvider({ children }: { children: ReactNode }) {
         const { items } = toPage<any>(data);
         const next: Record<string, BusLocation> = {};
         for (const raw of items) {
-          const lat = raw.lastKnownLat ?? raw.lat;
-          const lng = raw.lastKnownLng ?? raw.lng;
+          const lat = Number(raw.lastKnownLat ?? raw.lat);
+          const lng = Number(raw.lastKnownLng ?? raw.lng);
           if (!isValidLatLng(lat, lng)) continue; // never hand Leaflet a null fix
-          next[raw.busId ?? raw.deviceId ?? raw.id] = {
-            busId: raw.busId ?? raw.deviceId ?? raw.id,
+          const busId = String(raw.busId ?? raw.deviceId ?? raw.id);
+          next[busId] = {
+            busId,
             lat,
             lng,
-            speed: typeof raw.speed === 'number' ? raw.speed : 0,
+            speed: Number(raw.speed) || 0,
             timestamp: raw.lastUpdate ?? raw.timestamp ?? new Date().toISOString(),
             licensePlate: raw.licensePlate ?? null,
             serialNumber: raw.serialNumber ?? null,
@@ -180,9 +181,9 @@ export function FleetProvider({ children }: { children: ReactNode }) {
     });
 
     socket.on('location_update', (data: any) => {
-      const lat = data?.lat ?? data?.lastKnownLat;
-      const lng = data?.lng ?? data?.lastKnownLng;
-      const busId = data?.busId ?? data?.deviceId ?? data?.id;
+      const lat = Number(data?.lat ?? data?.lastKnownLat);
+      const lng = Number(data?.lng ?? data?.lastKnownLng);
+      const busId = String(data?.busId ?? data?.deviceId ?? data?.id);
       setLastEventAt(Date.now());
       if (!busId || !isValidLatLng(lat, lng)) return;
       setLocations((prev) => ({
@@ -191,7 +192,7 @@ export function FleetProvider({ children }: { children: ReactNode }) {
           busId,
           lat,
           lng,
-          speed: typeof data.speed === 'number' ? data.speed : 0,
+          speed: Number(data.speed) || 0,
           timestamp: data.timestamp ?? data.lastUpdate ?? new Date().toISOString(),
           licensePlate: data.licensePlate ?? prev[busId]?.licensePlate ?? null,
           serialNumber: data.serialNumber ?? prev[busId]?.serialNumber ?? null,
