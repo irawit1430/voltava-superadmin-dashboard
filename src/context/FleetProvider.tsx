@@ -36,7 +36,7 @@ const NOTIFICATION_POLL_MS = 60_000;
  * alerts, so we subscribe to the plausible set and keep polling regardless —
  * see the backend request list in BACKEND_REQUESTS.md.
  */
-const ALERT_EVENTS = ['notification', 'notification_new', 'alert', 'sos_alert', 'sos'];
+const ALERT_EVENTS = ['notification', 'notification_new', 'alert', 'sos_alert', 'sos', 'emergency_alert'];
 
 export interface FleetContextValue {
   connected: boolean;
