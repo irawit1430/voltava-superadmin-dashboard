@@ -42,19 +42,19 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
-      // Single source of truth for the API host, shared with server.ts.
-      // These previously pointed at gps-backend-jzd7.onrender.com while
-      // server.ts and .env.production both pointed at api.voltava.in.
+      // Development only: production is static files on Firebase that call
+      // VITE_API_URL directly. The certificate is checked unless you point
+      // API_TARGET at a local backend with a self-signed one (API_TARGET_INSECURE=1).
       proxy: {
         '/api': {
           target: API_TARGET,
           changeOrigin: true,
-          secure: false,
+          secure: process.env.API_TARGET_INSECURE !== '1',
         },
         '/socket.io': {
           target: API_TARGET,
           changeOrigin: true,
-          secure: false,
+          secure: process.env.API_TARGET_INSECURE !== '1',
           ws: true,
         }
       }

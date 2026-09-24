@@ -7,21 +7,16 @@
     <meta name="description" content="Voltava Drive — fleet intelligence console for Voltava Energy Systems." />
     <title>Voltava Drive | Fleet Management</title>
     <!-- Loaded here rather than via `@import url()` inside index.css, which is
-         the slowest possible path and blocks rendering on every page load. -->
+         the slowest possible path and blocks rendering on every page load. A plain
+         link: the media="print" onload trick is inline script, which the Content
+         Security Policy in firebase.json refuses to run. display=swap keeps text
+         visible while the font loads. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      media="print"
-      onload="this.media='all'"
     />
-    <noscript>
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      />
-    </noscript>
   </head>
   <body>
     <div id="root"></div>

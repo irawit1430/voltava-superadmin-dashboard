@@ -1,3 +1,9 @@
+> **Update, 24 Sep 2026:** `server.ts` (the Express middleman below) has been removed.
+> Production is the static `dist/` on Firebase Hosting, calling `VITE_API_URL`
+> (https://api.voltava.in) directly, with a strict Content Security Policy in
+> `firebase.json`. `npm run dev` is plain Vite, whose proxy forwards `/api` in development.
+> The mocks described below are gone; the backend serves those endpoints.
+
 # Voltava Drive - Super Admin Dashboard Context
 
 ## 🎯 Ultimate Goal of the App (App ka Last Goal Kya Hai?)
